@@ -17,7 +17,7 @@ void fifo_init(Fifo* f, unsigned int size){
     f->buffer=buffer;
     f->rptr= buffer;
     f->wptr=buffer;
-    f->end= buffer+size;
+    f->end= buffer+size*4;
 }
 
 void fifo_read(Fifo* f, uint8_t* buf, int buff_size){
