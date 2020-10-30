@@ -25,12 +25,5 @@ export const whiteNoise = ({ adsr }) => {
 	// Get an AudioBufferSourceNode.
 	// This is the AudioNode to use when we want to play an AudioBuffer
 	const source = audioCtx.createBufferSource();
-
-	// set the buffer in the AudioBufferSourceNode
-	source.buffer = myArrayBuffer;
-	const g = new GainNode(audioCtx, { gain: 2 });
-	source.connect(g);
-	envelope(audioCtx, g.gain, adsr);
-	source.start(0);
-	return g;
+	return source;
 };

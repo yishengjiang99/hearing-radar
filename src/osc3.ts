@@ -10,6 +10,7 @@ export interface OSC3Props {
 	duration?: number;
 	types?: OscillatorType[];
 	overtoneAttunuate?: [Percent, Percent, Percent];
+	ctx?: BaseAudioContext;
 }
 export const defaultOsc3Props: OSC3Props = {
 	hpf: -1,
@@ -21,12 +22,13 @@ export const defaultOsc3Props: OSC3Props = {
 };
 
 export const osc3 = (baseNote: Frequency, _props: OSC3Props = {}) => {
-	const ctx = getCtx();
 	const props: OSC3Props = {
 		...defaultOsc3Props,
 		..._props,
 	};
 	const { duration, when, adsr, hpf, types } = props;
+	const ctx = props.ctx || getCtx();
+
 	const merger = new ChannelMergerNode(ctx, {
 		numberOfInputs: 3,
 	});

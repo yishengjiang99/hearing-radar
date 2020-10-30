@@ -4,7 +4,7 @@ import { Milliseconds } from "./types";
 export interface OutputBufferOptions {
 	length?: Milliseconds;
 	output?: Float32Array;
-	transform?: (number) => number;
+	sampleRate?: number;
 	outlet?: AudioNode | AudioDestinationNode;
 }
 export const defaultProps = {
@@ -50,4 +50,9 @@ export function outputBuffer(
 		node: proc,
 		samples: async () => await sampleGot,
 	};
+}
+export async function renderAudioBuffer(node: AudioNode, opts?:OfflineAudioContextOptions): Promise<AudioBuffer>{
+	const offctx = new OfflineAudioContext({ ...{length:1024,numberOfChannels:2,sampleRate:44100}, ...(opts||{}) });
+	node.connect(node.context.destination);
+	return  offctx.startRendering();
 }

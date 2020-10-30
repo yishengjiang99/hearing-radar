@@ -1,0 +1,13 @@
+{
+  "name": "grep-fifo",
+  "version": "1.0.1",
+  "description": "ES6 compliant and (typescript friendly) implementation of circular fifo in c. ",
+  "main": "fifo.wasmodule.js",
+  "scripts": {
+    "make": "emcc --bind -O1 -s WASM=1 -s BINARYEN_ASYNC_COMPILATION=0 -s SINGLE_FILE=1 fifo.c -s EXPORTED_FUNCTIONS=\"[_fifo_init, _fifo_read, _fifo_write, _fifo_size]\" -o fifo.wasmodule.ts --post-js ./es6.js",
+    "test": "node ./test.js"
+  },
+  "keywords": ["pain in the arse","allegedly faster than javascript"],
+  "author": "",
+  "license": "ISC"
+}

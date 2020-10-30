@@ -18,3 +18,9 @@ export const timeseries = (arr: Float32Array, divId) => {
      points="${points.trim()}"/>
 </svg>`;
 };
+
+export const getDiv=(id:string)=>{
+	const div=document.createElement("div");
+	div.id=id;
+	document.body.appendChild(div);
+}
