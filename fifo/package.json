@@ -1,6 +1,6 @@
 {
   "name": "grep-fifo",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "ES6 compliant and (typescript friendly) implementation of circular fifo in c. ",
   "main": "fifo.wasmodule.js",
   "scripts": {

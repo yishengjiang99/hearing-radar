@@ -51,8 +51,8 @@ export function outputBuffer(
 		samples: async () => await sampleGot,
 	};
 }
-export async function renderAudioBuffer(node: AudioNode, opts?:OfflineAudioContextOptions): Promise<AudioBuffer>{
-	const offctx = new OfflineAudioContext({ ...{length:1024,numberOfChannels:2,sampleRate:44100}, ...(opts||{}) });
+export async function renderAudioBuffer(node: AudioNode, opts?: OfflineAudioContextOptions): Promise<AudioBuffer> {
+	const offctx = new OfflineAudioContext({ ...{ length: 1024, numberOfChannels: 2, sampleRate: 44100 }, ...(opts||{}) });
 	node.connect(node.context.destination);
-	return  offctx.startRendering();
+	return offctx.startRendering();
 }

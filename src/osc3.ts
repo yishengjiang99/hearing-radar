@@ -1,4 +1,4 @@
-import { Frequency, Midi, ADSR, Percent } from "./types";
+import { ADSR, Frequency, Midi, Percent } from "./types";
 import { envelope } from "./envelope";
 import { getCtx } from "./ctx";
 export const frequencyToMidi = (f: Frequency): Midi =>
@@ -49,7 +49,7 @@ export const osc3 = (baseNote: Frequency, _props: OSC3Props = {}) => {
 	envelope(ctx, gain.gain, props.adsr, ctx.currentTime);
 	const postAmp = new GainNode(ctx);
 	if (hpf === -1) {
-		merger.connect(gain).connect(postAmp); //connect(ctx.destination);
+		merger.connect(gain).connect(postAmp); // connect(ctx.destination);
 	} else {
 		const lowpass = new BiquadFilterNode(ctx, {
 			type: "highpass",
@@ -65,7 +65,7 @@ export const osc3 = (baseNote: Frequency, _props: OSC3Props = {}) => {
 	return postAmp;
 };
 
-export let osc3run = (
+export const osc3run = (
 	baseFrequency: Frequency,
 	when?: number,
 	duration?: number
