@@ -1,2 +1,2 @@
-const {templateUI} = require("./templateUI");
+const { templateUI } = require("./templateUI");
 templateUI();
