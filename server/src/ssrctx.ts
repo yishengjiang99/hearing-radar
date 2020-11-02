@@ -56,7 +56,7 @@ export class SSRContext {
 		return frame;
 	}
 	get blockSize() {
-		return (this.sampleRate / this.fps) * this.nChannels;
+		return this.sampleRate / this.fps;
 	}
 	get currentTime() {
 		return timediff(process.hrtime(), this.t0);
@@ -65,6 +65,8 @@ export class SSRContext {
 		this.destination = destination;
 	}
 	start = () => {
+		console.log("starting");
+		this.t0 = process.hrtime();
 		this.playing = true;
 		let that = this;
 		function loop() {
@@ -75,15 +77,17 @@ export class SSRContext {
 					that.secondsPerFrame
 			) {
 				that.lastFrame = process.hrtime();
-				console.log(that.lastFrame);
 				const withoutBackPressure = that.destination.write(
 					that.channelData
 				);
 				if (withoutBackPressure) that.destination.once("drain", loop);
 				else setTimeout(loop, 1);
 				that.frameNumber++;
+				console.log(
+					(that.frameNumber / that.currentTime) * that.samplesPerFrame
+				);
 			}
-			setTimeout(loop, 1);
+			setTimeout(loop, 0);
 		}
 		setImmediate(loop);
 	};

@@ -1,6 +1,14 @@
-export function templateUI() {
-	const stdoutdiv = document.querySelector("#stdout");
-	const rx1Div = document.getElementById("rx1");
+export function templateUI(): {
+	stdout: (str: string) => void;
+	rx1Div: HTMLDivElement;
+	postRx1: (str: String) => void;
+	cp: HTMLDivElement;
+} {
+	const stdoutdiv: HTMLDivElement = document.querySelector("#stdout");
+	const rx1Div: HTMLDivElement = document.querySelector<HTMLDivElement>(
+		"div#rx1"
+	);
+	const cp = document.querySelector<HTMLDivElement>("div#cp");
 	const stdoutBuffer = [];
 	let rx1 = "";
 	const stdin = document.querySelector("input");
@@ -46,7 +54,30 @@ export function templateUI() {
 	};
 	return {
 		stdout,
+		rx1Div,
 		postRx1,
-		render,
+		cp,
 	};
 }
+
+export const createActionBtn = (
+	offStateText: string,
+	onStateText: string,
+	fn: (state: any) => void,
+	offFn?: (state: any) => void
+) => {
+	let state = {
+		on: false,
+	};
+	const btn = document.createElement("button");
+	btn.textContent = offStateText;
+	btn.addEventListener("click", (e) => {
+		if (!state.on) fn(state);
+		else if (offFn) {
+			offFn(state);
+		}
+		state.on = !state.on;
+		btn.textContent = state.on ? onStateText : offStateText;
+	});
+	return btn;
+};

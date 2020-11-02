@@ -1,0 +1,6 @@
+node_modules
+server/mp3
+server/db
+coverage
+build
+server/dist

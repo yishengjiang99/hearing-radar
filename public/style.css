@@ -1,0 +1,57 @@
+* {
+	padding: 0;
+	margin: 0;
+	align-content: center;
+	background-color: black;
+	color: white;
+}
+*::-webkit-scrollbar {
+	display: none;
+}
+
+#stdout {
+	left: 50%;
+	transform: translate(-50%, 0);
+	top: 200px;
+	min-width: 50%;
+	position: absolute;
+	min-height: 640px;
+	max-height: 640px;
+	overflow-y: scroll;
+	background-color: #121212;
+	color: white;
+	padding: 10px;
+}
+#stdout div {
+	background-color: #121212;
+	color: white;
+}
+#rx1 {
+	top: 40px;
+	left: 40;
+	position: absolute;
+	width: 30px;
+}
+#cp {
+	left: 50%;
+	transform: translate(-50%, 0);
+	top: 800px;
+	min-width: 50%;
+	position: absolute;
+	background-color: #121212;
+	color: white;
+}
+#cp button {
+	height: 20px;
+	font-size: 1.5em;
+	min-width: 50px;
+}
+input {
+	left: 50%;
+	transform: translate(-50%, 0);
+	top: 840px;
+	min-width: 50%;
+	position: absolute;
+	background-color: #121212;
+	color: white;
+}
