@@ -43,8 +43,8 @@ export const spawnInputBuffer = (proc:ChildProcess, buffer:Buffer)=>{
 //    // console.log(buffer.toString());
 // }).catch(console.error);
 
-spawnToBuffer(spawn("ffmpeg",'-i 8.mp3 -f WAV -'.split(' '))).then(buffer=>{
-    console.log(buffer.toString());
-}).catch(console.error);
+// spawnToBuffer(spawn("ffmpeg",'-i 8.mp3 -f WAV -'.split(' '))).then(buffer=>{
+//     console.log(buffer.toString());
+// }).catch(console.error);
 
 

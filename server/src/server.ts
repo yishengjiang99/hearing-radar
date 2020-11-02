@@ -1,26 +1,16 @@
 export {};
-import { WebSocketServer } from 'grep-wss';
-
-
-type ReplyFunction = (msg: string | Buffer) => void;
-
-const ppl: ReplyFunction[] = [];
-WebSocketServer({
-    port: 5150,
-
-    onListening:()=>{
-    //    proc = spawn("ffmpeg", `-i pipe:0 -f s16le -ac 1 -ar 8000 `.split(' '));
-    //    proc!.stdout!.pipe(output);
-    //    console.log("listening on 5150, ffmpeg proc id: ", proc.pid);
-    //    proc.stderr?.on('data',d=>console.error(d));
-    }, 
-    onConnection:(reply)=>{
-        ppl.push(reply);
-
-    },
-    onData: (data: Buffer,_)=>{
-        _(data);
-
-    }
+import { PassThrough } from "stream";
+import WebSocket, * as ws from "ws";
+import { Oscillator } from "./AudioDataSource";
+import { SSRContext } from "./ssrctx";
+const server = new ws.Server({
+	port: 5150,
 });
-
+server.on("connection", (ws: WebSocket) => {
+	const ctx = new SSRContext({ nChannels: 2, sampleRate: 44100, fps: 22050 });
+	const osc = new Oscillator(ctx, { frequency: 440 });
+	const pt = new PassThrough();
+	ctx.connect(pt);
+	osc.connect(ctx);
+	pt.on("data", (d) => ws.send(d));
+});
