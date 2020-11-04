@@ -1,30 +1,40 @@
 import { templateUI, createActionBtn } from "./templateUI";
 import { initPlayback } from "./run";
-let { cp, stdout, postRx1 } = templateUI();
+let { cp, stdout, postRx1, appendNOde } = templateUI();
+stdout("welcome");
+stdout("init_clock");
 
 const btn = createActionBtn(
 	"start",
 	"pause",
 	(state) => {
 		if (!state.ctx) {
-			state.ctx = new AudioContext({ sampleRate: 9000 });
+			state.ctx = new AudioContext({ sampleRate: 44100 });
 		}
 		if (state.ctx && !state.playback) {
-			initPlayback(state.ctx, stdout, postRx1).then((node) => {
-				state.playback = node;
-				state.ws = new WebSocket("ws://localhost:5150");
-				state.ws.onopen = () => {
-					state.ws.addEventListener("message", ({ data }) => {
-						if (state.playback) {
-							data.arrayBuffer().then((ab) => {
-								console.log("posting");
-								state.playback.port.postMessage(ab, [ab]);
+			initPlayback("http://localhost:4000/", state.ctx, stdout, postRx1)
+				.then(({ worker, initMsg }) => {
+					state.worker = worker;
+					initMsg.data.split("|").map((filename) => {
+						const link = document.createElement("a");
+						link.onclick = () => {
+							worker.postMessage({
+								sampleUrl: `http://localhost:4000/file/${filename}`,
 							});
-						}
+						};
+						link.textContent = filename;
+						link.href = "#" + filename;
+						appendNOde(link, filename);
 					});
-					state.ws.send("start");
-				};
-			});
+					worker.onmessage = (e) => {
+						const {
+							data: { msg, rx1 },
+						} = e;
+						if (msg) stdout(msg);
+						if (rx1) postRx1(rx1);
+					};
+				})
+				.catch(console.log);
 		}
 	},
 	(state) => {
