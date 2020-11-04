@@ -1,0 +1,53 @@
+{
+	"name": "grep-transform",
+	"version": "1.1.1",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "tsc",
+		"test": "nyc mocha"
+	},
+	"mocha": {
+		"package": "./package.json",
+		"extension": [
+			"ts"
+		],
+		"spec": [
+			"src/**/*.test.ts"
+		],
+		"recursive": true,
+		"require": [
+			"ts-node/register",
+			"./mocha.js"
+		]
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"devDependencies": {
+		"@types/chai": "^4.2.14",
+		"@types/node": "^14.14.6",
+		"nyc": "^15.1.0"
+	},
+	"nyc": {
+		"extends": [],
+		"all": true,
+		"reporter": [
+			"text",
+			"text-summary"
+		],
+		"include": [
+			"src/*.ts"
+		],
+		"check-coverage": false,
+		"statements": 100,
+		"branches": 100,
+		"functions": 100,
+		"lines": 100,
+		"cache": true
+	},
+	"directories": {
+		"test": "test",
+		"src": "src"
+	},
+	"description": ""
+}
