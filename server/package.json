@@ -10,9 +10,12 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
+		"connect": "^3.7.0",
 		"express": "^4.17.1",
 		"grep-fifo": "^1.0.3",
+		"grep-transformers": "file:../grep-transformers",
 		"grep-wss": "file:../../grep-wss",
+		"grepawk-readline": "file:../grep-transformers",
 		"react": "^17.0.1"
 	},
 	"devDependencies": {
