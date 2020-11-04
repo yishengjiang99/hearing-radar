@@ -1,37 +1,95 @@
 export {};
 import { PassThrough } from "stream";
-import WebSocket, * as ws from "ws";
-import { Oscillator } from "./AudioDataSource";
-import { SSRContext } from "./ssrctx";
-import { IncomingMessage } from "http";
-const server = new ws.Server({
-	port: 5150,
-});
-const ctx: { [key: string]: SSRContext } = {};
-const sessionId = (request: IncomingMessage) => {
-	return request.headers["sec-websocket-key"];
-};
+import { WebSocketServer } from "grep-wss";
 
-server.on("connection", (ws: WebSocket, request: IncomingMessage) => {
-	console.log("connection");
-	ctx[sessionId(request)] = new SSRContext({
-		nChannels: 1,
-		sampleRate: 9000,
-		fps: 9000 / 128 / 16,
-	});
-	let _ctx = ctx[sessionId(request)];
-	const osc = new Oscillator(_ctx, { frequency: 440 });
-	const pt = new PassThrough();
-	_ctx.connect(pt);
-	osc.connect(_ctx);
-	pt.on("data", (d) => ws.send(d));
-	_ctx.start();
-	ws.on("message", (ws, data) => {
-		if (data === "start" && !_ctx.playing) _ctx.start();
-		if (data === "stop") _ctx.stop();
-	});
-});
-server.on("close", (socket: WebSocket, request: IncomingMessage) => {
-	ctx[sessionId(request)].stop();
-	ctx[sessionId(request)] = null;
-});
+import { Oscillator, FileSource } from "./audio-data-source";
+import { SSRContext } from "./ssrctx";
+import { IncomingMessage, createServer, ServerResponse } from "http";
+const samples = require("child_process")
+	.execSync("ls samples")
+	.toString()
+	.trim()
+	.split(/\s+/)
+	.map((f) => "samples/" + f);
+
+createServer((req: IncomingMessage, res: ServerResponse) => {
+	if (req.url === "/") {
+		res.writeHead(200, {
+			"Access-Control-Allow-Origin": "*",
+		});
+		res.end(samples.join("|"));
+	} else if (req.url.startsWith("/file")) {
+		res.writeHead(200, {
+			"Access-Control-Allow-Origin": "*",
+			"Content-Type": "application/octet-stream",
+			"Content-Disposition": "inline",
+		});
+		const filename = req.url.replace("/file/", "");
+		// require("fs")
+		// 	.createReadStream(
+		// 		require("path").resolve(__dirname, "..", filename)
+		// 	)
+		// 	.pipe(res);
+		const ctx = new SSRContext({
+			nChannels: 1,
+			sampleRate: 44100,
+			fps: 44100 / 128,
+			bitDepth: 16,
+		});
+		ctx.connect(res);
+		const fsrc = new FileSource(ctx, {
+			filePath: require("path").resolve(__dirname, "..", filename),
+		});
+		fsrc.connect(ctx);
+		ctx.start();
+	}
+}).listen(4000);
+// });
+
+// WebSocketServer({
+// 	onConnection: (reply, session, socket) => {
+// 		const ctx = new SSRContext({
+// 			nChannels: 2,
+// 			sampleRate: 44100,
+// 			fps: 100,
+// 			bitDepth: 32,
+// 		});
+// 		const pt = new PassThrough();
+// 		ctx.connect(pt);
+// 		ctx.start();
+// 		const fsrc = new FileSource(ctx, {
+// 			filePath: inc.replace("file:", ""),
+// 		});
+// 		fsrc.connect(ctx);
+// 		reply(samples.join("|"));
+// 	},
+// 	onData: (data: Buffer, reply, session, socket) => {
+// 		const inc = data.toString();
+// 		const ctx = session["ctx"];
+// 		const pt = session["pt"];
+// 		if (inc.startsWith("file:")) {
+// 			const fsrc = new FileSource(ctx, {
+// 				filePath: inc.replace("file:", ""),
+// 			});
+// 			fsrc.connect(ctx);
+// 			pt.on("data", (d) => reply(d));
+// 		} else if (inc === "stop") {
+// 			ctx.stop();
+// 		} else if (inc === "start") {
+// 			ctx.start();
+// 		}
+// 	},
+// 	port: 5150,
+// });
+// const b = require("fs").readFileSync("./samples/2L.pcm");
+// for (let i = 0; i < b.length; i += 4) {
+// 	const f2 = b.readFloatLE(i);
+// 	const n = b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24);
+// 	let f;
+// 	if (b[i + 3] & 0x80) {
+// 		f = -(0x100000000 - n) / 0x80000000;
+// 	} else {
+// 		f = n / 0x7fffffff;
+// 	}
+// 	console.log(f2, f);
+// }

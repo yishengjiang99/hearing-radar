@@ -11,7 +11,6 @@
 // after the generated code, you will need to define   var Module = {};
 // before the code. Then that object will be used in the code, and you
 // can continue to use Module afterwards as well.
-"use strict";
 var Module = typeof Module !== "undefined" ? Module : {};
 
 // --pre-jses are emitted after the Module integration code, so that they can
@@ -2656,7 +2655,7 @@ noExitRuntime = true;
 
 run();
 
-const FifoPtr = function (ptr) {
+export const FifoPtr = function (ptr) {
 	return {
 		ptr,
 		write: (array) => {
@@ -2686,17 +2685,8 @@ const FifoPtr = function (ptr) {
 		},
 	};
 };
-const Fifo = function (size) {
+export const Fifo = function (size) {
 	const ptr = _malloc(32);
 	_fifo_init(ptr, size);
 	return FifoPtr(ptr);
 };
-if (module) {
-	module.exports = {
-		Fifo,
-		FifoPtr,
-	};
-} else if (globalThis.window) {
-	// export Fifo;
-	// export FifoPtr;
-}

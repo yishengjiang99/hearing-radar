@@ -1,91 +1,111 @@
 import { Writable } from "stream";
-import { createWriteStream } from "fs";
-const atob = require("atob");
-import { AudioDataSource, Oscillator } from "./AudioDataSource";
+import { AudioDataSource, FileSource, Oscillator } from "./audio-data-source";
+import { spawn } from "child_process";
+import { createServer, createConnection, Socket } from "net";
+
 type Time = [number, number];
 const timediff = (t1: Time, t2: Time) => {
-	// console.log(t1[0] - t2[0] + (t1[1] - t2[1]) / 0xffffffff);
 	return t1[0] - t2[0] + (t1[1] - t2[1]) / 0xffffffff;
 };
 
+//#region
+export interface CtxProps {
+	nChannels?: number;
+	sampleRate?: number;
+	fps?: number;
+	bitDepth?: 32 | 16 | 8;
+}
+//#endregion
 export class SSRContext {
+	encoder: Encoder;
 	nChannels: number;
 	playing: boolean;
 	sampleRate: number;
 	fps: number;
 	t0: Time;
 	lastFrame: Time;
-	secondsPerFrame: number;
-	destination: Writable;
-	samplesPerFrame: number;
+	output: Writable;
 	frameNumber: number;
 	inputs: AudioDataSource[] = [];
-	buffer: Buffer;
+	bitDepth: 32 | 16 | 8;
 
-	constructor(props: { nChannels: number; sampleRate: number; fps: number }) {
-		const { nChannels, sampleRate, fps } = props;
+	static defaultProps: CtxProps = {
+		nChannels: 2,
+		sampleRate: 44100,
+		fps: 44100 / 128,
+		bitDepth: 32,
+	};
+
+	constructor(props: CtxProps = SSRContext.defaultProps) {
+		const { nChannels, sampleRate, fps, bitDepth } = {
+			...props,
+			...SSRContext.defaultProps,
+		};
 		this.nChannels = nChannels;
 		this.sampleRate = sampleRate;
 		this.fps = fps;
-		this.secondsPerFrame = 1 / this.fps;
-		this.samplesPerFrame = this.sampleRate / this.fps;
 		this.frameNumber = 0;
+		this.bitDepth = bitDepth;
+		this.encoder = new Encoder(this.bitDepth);
+	}
+	get secondsPerFrame() {
+		return 1 / this.fps;
+	}
+	get samplesPerFrame() {
+		return (this.sampleRate * this.nChannels) / this.fps;
 	}
 	get inputSources() {
 		return this.inputs.filter((i) => i.active);
 	}
-	get channelData() {
-		const frame = Buffer.alloc(
-			Int16Array.BYTES_PER_ELEMENT * this.samplesPerFrame * this.nChannels
-		).fill(0);
-		const frame16 = new Int16Array(frame);
-		const activeInputs = this.inputSources;
 
-		for (let i = 0; i < activeInputs.length; i++) {
-			const track = activeInputs[i].pullFrame();
-			for (let j = 0; j < this.samplesPerFrame; j++) {
-				for (let n = 0; n < this.nChannels; n++) {
-					frame.writeInt16LE(
-						frame16[j * this.nChannels + n] +
-							track[j * this.nChannels + n] / activeInputs.length,
-						Int16Array.BYTES_PER_ELEMENT * (j * this.nChannels + n)
-					);
-				}
-			}
+	encode(buffer: Buffer, value: number, index: number): void {
+		this.encoder.encode(buffer, value, index);
+	}
+
+	get sampleArray() {
+		switch (this.bitDepth) {
+			case 32:
+				return Float32Array;
+			case 16:
+				return Int16Array;
+			case 8:
+				return Uint8Array;
+			default:
+				return Int16Array;
 		}
-		return frame;
+	}
+	pump(): boolean {
+		let ok = true;
+		for (let i = 0; i < this.inputSources.length; i++) {
+			ok = ok && this.output.write(this.inputSources[i].pullFrame());
+		}
+		return ok;
 	}
 	get blockSize() {
-		return this.sampleRate / this.fps;
+		return this.samplesPerFrame * this.sampleArray.BYTES_PER_ELEMENT;
 	}
 	get currentTime() {
 		return timediff(process.hrtime(), this.t0);
 	}
 	connect(destination: Writable) {
-		this.destination = destination;
+		this.output = destination;
 	}
 	start = () => {
 		console.log("starting");
 		this.t0 = process.hrtime();
 		this.playing = true;
 		let that = this;
+		let ok = true;
+		this.output.on("drain", () => (ok = true));
 		function loop() {
 			if (that.playing === false) return;
-			if (
-				!that.lastFrame ||
-				timediff(process.hrtime(), that.lastFrame) >=
-					that.secondsPerFrame
-			) {
+			if (!that.lastFrame) that.lastFrame = that.t0;
+			const elapsed = timediff(process.hrtime(), that.lastFrame);
+			//console.log(backpressure, elapsed);
+			if (ok && elapsed > that.secondsPerFrame) {
 				that.lastFrame = process.hrtime();
-				const withoutBackPressure = that.destination.write(
-					that.channelData
-				);
-				if (withoutBackPressure) that.destination.once("drain", loop);
-				else setTimeout(loop, 1);
+				ok = that.pump();
 				that.frameNumber++;
-				console.log(
-					(that.frameNumber / that.currentTime) * that.samplesPerFrame
-				);
 			}
 			setTimeout(loop, 0);
 		}
@@ -96,3 +116,46 @@ export class SSRContext {
 		this.playing = false;
 	}
 }
+export class Encoder {
+	bitDepth: number;
+	constructor(bitDepth: 32 | 16 | 8) {
+		this.bitDepth = bitDepth;
+	}
+	encode(buffer: Buffer, value: number, index: number): void {
+		value = Math.max(-1, Math.min(value, +1));
+		switch (this.bitDepth) {
+			case 32:
+				buffer.writeInt32LE(
+					value > 0 ? value * 0x7fffffff : value * 0x80000000,
+					index * Float32Array.BYTES_PER_ELEMENT
+				);
+				break;
+			case 16:
+				buffer.writeInt16LE(
+					value > 0 ? value * 0x7fff : value * 0x8000,
+					index * Int16Array.BYTES_PER_ELEMENT
+				);
+				break;
+			case 8:
+				buffer.writeUInt8(value, index * Uint8Array.BYTES_PER_ELEMENT);
+				break;
+			default:
+				throw new Error("unsupported bitdepth");
+		}
+	}
+}
+// const ctx = new SSRContext({
+// 	nChannels: 1,
+// 	sampleRate: 44100,
+// 	fps: 44100 / 128,
+// 	bitDepth: 32,
+// });
+// const osc = new Oscillator(ctx, { frequency: 440 });
+// const filesrc = new FileSource(ctx, { filePath: "../no-dout-f32le.pcm" });
+// filesrc.connect(ctx);
+
+// ctx.connect(process.stdout);
+// // require("child_process").execSync(
+// // 	"nc -Ul /tmp/ipc2.sock & ffplay -ac 1 -ar 9000 -f s16le -i unix:/tmp/ipc2.sock"
+// // );
+// ctx.start();

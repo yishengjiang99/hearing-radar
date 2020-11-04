@@ -20,6 +20,7 @@ void fifo_init(Fifo* f, unsigned int size){
     f->end= buffer+size*4;
 }
 
+
 void fifo_read(Fifo* f, uint8_t* buf, int buff_size){
     if(f->wptr < f->rptr + buff_size){
         int len = f->wptr - f->rptr;
@@ -62,8 +63,9 @@ int fifo_size(Fifo* f){
 }
 
 
-int _main(){
-    printf("hello");
+int main(){
+    printf("hello %lu", sizeof(Fifo));
+    
     Fifo* f = malloc(sizeof(Fifo));
     fifo_init(f, 1000);
     uint8_t buffer[] = { 5, 7, 3, 4, 9, 1, 3 };
@@ -78,4 +80,4 @@ int _main(){
 
 }
 
-//_main();
+main();

@@ -1,24 +1,59 @@
 {
-  "name": "server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "@types/ws": "^7.2.9",
-    "atob": "^2.1.2",
-    "audio-generator": "^2.1.2",
-    "audio-lena": "^2.1.1",
-    "bufferutil": "^4.0.2",
-    "nmap": "^1.1.0",
-    "nodemon": "^2.0.6",
-    "nyc": "^15.1.0",
-    "tape": "^5.0.1",
-    "web-audio-stream": "^3.0.1",
-    "ws": "^7.3.1"
-  }
+	"name": "server",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"test": "nyc mocha",
+		"start": "ts-node src/server"
+	},
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"express": "^4.17.1",
+		"grep-fifo": "^1.0.3",
+		"grep-wss": "file:../../grep-wss",
+		"react": "^17.0.1"
+	},
+	"devDependencies": {
+		"@types/expect": "^24.3.0",
+		"@types/express": "^4.17.8",
+		"@types/mocha": "^8.0.3",
+		"@types/node": "^14.14.6",
+		"nodemon": "^2.0.6",
+		"nyc": "^15.1.0",
+		"ts-mocha": "^8.0.0"
+	},
+	"mocha": {
+		"package": "./package.json",
+		"extension": [
+			"ts"
+		],
+		"spec": [
+			"src/**/*.test.ts"
+		],
+		"recursive": true,
+		"require": [
+			"ts-node/register",
+			"./mocha.js"
+		]
+	},
+	"nyc": {
+		"extends": [],
+		"all": true,
+		"reporter": [
+			"lcov",
+			"text",
+			"text-summary"
+		],
+		"include": [
+			"src"
+		],
+		"check-coverage": false,
+		"statements": 100,
+		"branches": 100,
+		"functions": 100,
+		"lines": 100,
+		"cache": true
+	}
 }

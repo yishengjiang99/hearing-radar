@@ -1,0 +1,5 @@
+{
+	"watch-files": ["src/*.test.ts"],
+	"recursive": true,
+	"file": "mocha.js"
+}

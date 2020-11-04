@@ -52,11 +52,34 @@ export async function initUploader(
 		alert(e.message);
 	}
 }
+// export const readReader = async (rs: ReadableStream) => {
+// 	rs.getReader({ mode: "byob" }).read(new Uint8Array(1024))
+// };
+export const msgEventReader = async (port: MessagePort) => {
+	const ws = new WebSocket("ws://localhost:5150");
+	await new Promise((resolve, reject) => {
+		ws.onopen = () => {
+			const { readable, writable } = new TransformStream();
+			// port.postMessage({ readable }, [readable]);
+			ws.onmessage = (event) => {
+				const b: Blob = event.data;
+				// new Response(b).body.pipeTo(writable) .stream().getReader().pipeTo(writable);
+			};
+			resolve();
+		};
+	});
+};
+
 export async function initPlayback(
+	url: string,
 	ctx: AudioContext,
-	stdout?: (str: string) => void,
-	postRx1?: (str: string) => void
-): Promise<AudioWorkletNode> {
+
+	stdout: (str: string) => void,
+	postRx1: (str: string) => void
+): Promise<{
+	initMsg: MessageEvent;
+	worker: Worker;
+}> {
 	try {
 		await ctx.audioWorklet.addModule(
 			"./playback-processor.js?t=" + new Date().getUTCMilliseconds()
@@ -64,14 +87,26 @@ export async function initPlayback(
 		const node = new AudioWorkletNode(ctx, "playback-processor", {
 			numberOfInputs: 0,
 			numberOfOutputs: 1,
-			outputChannelCount: [1],
+			outputChannelCount: [2],
 		});
+		stdout("worklet init");
+
 		node.connect(ctx.destination);
 		node.port.onmessage = ({ data: { rx1 } }) => {
 			postRx1(rx1 + "");
 		};
-		return node;
+		const worker = new Worker("./playback-worker.js", { type: "module" });
+		worker.postMessage({ url: url, port: node.port }, [node.port]);
+		stdout("worker init");
+
+		const initMsg: MessageEvent = await new Promise((resolve, reject) => {
+			worker.onmessage = (e: MessageEvent) => resolve(e);
+		});
+		stdout("offline ctx init done");
+
+		return { worker, initMsg };
 	} catch (e) {
 		stdout("ERROR: " + e.message);
+		throw e;
 	}
 }
