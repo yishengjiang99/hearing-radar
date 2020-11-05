@@ -2,81 +2,122 @@ export {};
 import { execSync, spawn, exec } from "child_process";
 import { Oscillator, FileSource } from "./audio-data-source";
 import { SSRContext } from "./ssrctx";
+import { basename, resolve } from "path";
 import { PassThrough, Transform } from "stream";
 import { createInterface } from "readline";
-import { Router } from "express";
-import { ReadlineTransform, GraphLS } from "grep-transformers";
-spawn("ls", "-R -m ./db".split(" "), {
-	stdio: ["pipe", "pipe", "pipe"],
-}).stdout.pipe(process.stdout);
-spawn("ls", "-R -m ./db".split(" ")).on("error", console.error);
-// .stdout.pipe(new ReadlineTransform())
-// .pipe(new GraphLS())
-// .pipe(
-// 	new Transform({
-// 		transform: (chunk, enc, cb) => {
-// 			cb(null, JSON.stringify(chunk));
-// 		},
-// 	})
-// )
-// .pipe(process.stdout);
-// .pipe(
-// 	new Transform({
-// 		transform: (chunk, enc, cb) => {
-// 			cb(null, JSON.stringify(chunk));
-// 		},
-// 	})
-// )
-// .pipe(process.stdout);
-process.exit();
+import {
+	Application,
+	Request,
+	RequestParamHandler,
+	Response,
+	Router,
+} from "express";
+import {
+	ReadlineTransform,
+	LSGraph,
+	LSSource,
+	MemoryWritable,
+} from "grep-transform";
+import { createReadStream, exists, existsSync, readFileSync } from "fs";
+import { create } from "domain";
 
 const express = require("express");
-var router = express.Router();
+var router: Router = express.Router();
 router.use("*", (req, res, next) => {
 	res.set("Access-Control-Allow-Origin", "*");
 	next();
 });
+
 router.use("/mp3", (req, res) => {
 	const files = execSync("ls -R **/*.mp3").toString().trim().split(/\s+/);
 	res.json(files);
 	res.end();
 });
-router.get("/db", (req, res) => {
-	spawn("ls", "-R -m db".split(" "))
-		.stdout.pipe(new ReadlineTransform())
-		.pipe(new GraphLS())
-		.pipe(
-			new Transform({
-				transform: (chunk, enc, cb) => {
-					cb(null, JSON.stringify(chunk));
-				},
-			})
-		)
-		.pipe(res);
+router.get("/r", (req, res: Response) => {
+	res.status(200);
+	res.contentType("text/html");
+
+	LSSource(resolve(__dirname, "../db"))
+		.pipe(new ReadlineTransform())
+		.pipe(new LSGraph())
+		.on("data", (d) => {
+			res.write(d.toString());
+		})
+		.on("end", () => res.end());
 });
-router.get("/file/:filename", (req, res) => {
+router.get("/samples/:filename", (req, res) => {
 	res.writeHead(200, {
 		"Access-Control-Allow-Origin": "*",
 		"Content-Type": "application/octet-stream",
 		"Content-Disposition": "inline",
 	});
-	const filename = req.url.replace("/file/", "");
 	const ctx = new SSRContext({
-		nChannels: 1,
-		sampleRate: 44100,
-		fps: 44100 / 128,
+		nChannels: 2,
+		sampleRate: 48000,
+		fps: 48000 / 128 / 50,
 		bitDepth: 16,
 	});
 	ctx.connect(res);
 	const fsrc = new FileSource(ctx, {
-		filePath: require("path").resolve(__dirname, "..", filename),
+		filePath: require("path").resolve(
+			__dirname,
+			"../samples/",
+			req.params.filename
+		),
 	});
 	fsrc.connect(ctx);
 	ctx.start();
 });
+router.use("/app", express.static("../../public"));
+router.use((req: Request, res: Response) => {
+	const fpath = resolve(__dirname, `../../public/${req.url}`);
+	if (req.url === "/") {
+		res.end(`
+		<html>
+		<head>
+		<style>${readFileSync("../public/style.css")}</style>
+		</head>
+		<body>
+		<div id='container'>
+			<div class='relative'>
+				<div id='menu'>${execSync("ls -R samples/*.pcm")
+					.toString()
+					.trim()
+					.split(/\s+/)
+					.map((file) => `<li><a href='#${file}'>${file}</a><li>`)
+					.join("<br>")}
+				</div>
+				<div id='rx1'></div>
+				<div id='stdout'>
+					Welcome!
+				</div>
+				<div id='cp'></div>
+				<input size=80 autofocus />
+
+			</div>
+		</div>
+		<audio controls src='classy.flac'>
+
+		<script src='build/Main.js'>
+		</script>
+		</body>
+		</html>
+		`);
+	} else if (existsSync(fpath)) {
+		res.contentType(require("mime").lookup(basename(fpath)));
+		res.sendFile(fpath);
+	} else {
+		res.end(resolve(__dirname, `../../public/${req.url}`));
+	}
+});
 if (require.main === module) {
-	const app = express();
+	const app: Application = express();
+	app.engine("tag", function (filename, options, callback) {
+		function toks(str: TemplateStringsArray, ...args) {}
+	});
+	app.use("/node", router);
 	app.use("/", router);
+
 	app.listen(3000);
 }
 // const p = spawn("ls", ["-R", "./db"]);

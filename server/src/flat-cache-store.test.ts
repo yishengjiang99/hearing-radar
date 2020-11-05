@@ -1,3 +1,4 @@
+import { expect } from "chai";
 import { cacheStore } from "./flat-cache-store";
 // console.log(test);
 // test("cache store", function(t){
@@ -13,3 +14,12 @@ import { cacheStore } from "./flat-cache-store";
 //     ob.writeFloatBE(1.2);
 //     t.equal(~~(floatCache.read('k2').readFloatBE(0) * 10) ,12);
 // });
+describe("cache store", () => {
+	it("instantiates with buffer size, and size of eleemnt", () => {
+		const before = process.memoryUsage();
+		const cache = cacheStore(100, 3);
+		const after = process.memoryUsage();
+		console.log(after.heapUsed - before.heapUsed);
+		expect(after.heapUsed - before.heapUsed).greaterThan(0);
+	});
+});

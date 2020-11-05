@@ -29,7 +29,8 @@
 		"grep-wss": "^1.0.2",
 		"run-async": "^2.4.1",
 		"standardized-audio-context": "^24.1.5",
-		"tslib": "^1.10.0"
+		"tslib": "^1.10.0",
+		"yisheng-utils": "^1.0.0"
 	},
 	"devDependencies": {
 		"@babel/plugin-transform-typescript": "^7.11.0",

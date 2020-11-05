@@ -98,7 +98,8 @@ export const createActionBtn = (
 	let state = {
 		on: false,
 	};
-	const btn = document.createElement("button");
+	const btn = document.createElement("div");
+
 	btn.textContent = offStateText;
 	btn.addEventListener("click", (e) => {
 		if (!state.on) fn(state);

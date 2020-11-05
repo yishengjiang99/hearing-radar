@@ -15,13 +15,13 @@ export async function initUploader(
 ) {
 	try {
 		await ctx.audioWorklet.addModule(
-			"./upload-processor.js?t=" + new Date().getMilliseconds()
+			"upload-processor.js?t=" + new Date().getMilliseconds()
 		);
 		const uploadProcessor = new AudioWorkletNode(ctx, "upload-processor");
 
 		stdout("upload proc loaded");
 		const worker = new Worker(
-			"./upload-worker.js?t=" + new Date().getMilliseconds()
+			"upload-worker.js?t=" + new Date().getMilliseconds()
 		);
 		worker.postMessage({ port: uploadProcessor.port }, [
 			uploadProcessor.port,
@@ -71,18 +71,20 @@ export const msgEventReader = async (port: MessagePort) => {
 };
 
 export async function initPlayback(
-	url: string,
 	ctx: AudioContext,
-
 	stdout: (str: string) => void,
 	postRx1: (str: string) => void
-): Promise<{
-	initMsg: MessageEvent;
-	worker: Worker;
-}> {
+): Promise<Worker> {
 	try {
 		await ctx.audioWorklet.addModule(
-			"./playback-processor.js?t=" + new Date().getUTCMilliseconds()
+			URL.createObjectURL(
+				new Blob(
+					[await (await fetch("playback-processor.js")).blob()],
+					{
+						type: "application/javascript",
+					}
+				)
+			)
 		);
 		const node = new AudioWorkletNode(ctx, "playback-processor", {
 			numberOfInputs: 0,
@@ -95,16 +97,16 @@ export async function initPlayback(
 		node.port.onmessage = ({ data: { rx1 } }) => {
 			postRx1(rx1 + "");
 		};
-		const worker = new Worker("./playback-worker.js", { type: "module" });
-		worker.postMessage({ url: url, port: node.port }, [node.port]);
+		const worker = new Worker("playback-worker.js", { type: "module" });
+		worker.postMessage({ port: node.port }, [node.port]);
 		stdout("worker init");
 
-		const initMsg: MessageEvent = await new Promise((resolve, reject) => {
+		await new Promise((resolve, reject) => {
 			worker.onmessage = (e: MessageEvent) => resolve(e);
 		});
 		stdout("offline ctx init done");
 
-		return { worker, initMsg };
+		return worker;
 	} catch (e) {
 		stdout("ERROR: " + e.message);
 		throw e;

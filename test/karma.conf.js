@@ -1,10 +1,6 @@
-
 const BROWSERS = ["Chrome"];
 const path = require("path");
-const argv = require("yargs")
-	.alias("i", "file")
-	.alias("d", "dir")
-	.argv;
+const argv = require("yargs").alias("i", "file").alias("d", "dir").argv;
 let entryPoints = undefined;
 if (typeof argv.file === "string") {
 	entryPoints = RegExp(`.*\\/${argv.file}\\.test\\.ts$`);
@@ -15,7 +11,6 @@ if (typeof argv.file === "string") {
 }
 module.exports = function (config) {
 	const configuration = {
-
 		// base path that will be used to resolve all patterns (eg. files, exclude)
 		basePath: "../",
 
@@ -24,10 +19,7 @@ module.exports = function (config) {
 		frameworks: ["mocha", "karma-typescript"],
 
 		// list of files / patterns to load in the browser
-		files: [
-			"test/**/*.ts",
-			"src/**/*.ts"
-		],
+		files: ["test/**/*.ts", "src/**/*.ts"],
 
 		// Karma Typescript compiler options
 		karmaTypescriptConfig: {
@@ -39,7 +31,7 @@ module.exports = function (config) {
 				resolve: {
 					directories: ["src", "node_modules", "test"],
 				},
-				entrypoints: entryPoints
+				entrypoints: entryPoints,
 			},
 			coverageOptions: {
 				exclude: /(.*\.test\.ts|test\/.*\.ts)$/i,
@@ -55,9 +47,7 @@ module.exports = function (config) {
 		},
 
 		// list of files to exclude
-		exclude: [
-			"node_modules/*",
-		],
+		exclude: ["node_modules/*"],
 
 		// preprocess matching files before serving them to the browser
 		// available preprocessors: https://npmjs.org/browse/keyword/karma-preprocessor
@@ -129,14 +119,23 @@ module.exports = function (config) {
 		customLaunchers: {
 			HeadlessChrome: {
 				base: "ChromeHeadless",
-				flags: ["--no-sandbox", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
-					"--autoplay-policy=no-user-gesture-required"],
-			}, OnlineChrome: {
+				flags: [
+					"--no-sandbox",
+					"--use-fake-ui-for-media-stream",
+					"--use-fake-device-for-media-stream",
+					"--autoplay-policy=no-user-gesture-required",
+				],
+			},
+			OnlineChrome: {
 				base: "Chrome",
-				flags: ["--no-sandbox", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
-					"--autoplay-policy=no-user-gesture-required"],
-			}
-		}
+				flags: [
+					"--no-sandbox",
+					"--use-fake-ui-for-media-stream",
+					"--use-fake-device-for-media-stream",
+					"--autoplay-policy=no-user-gesture-required",
+				],
+			},
+		},
 	};
 
 	config.set(configuration);

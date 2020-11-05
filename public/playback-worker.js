@@ -1,40 +1,52 @@
 let ws, procPort;
 let sharedStream = false;
+let buffered = 0;
+const uint8ToFloat = (int1, int2) => {
+	if (int2 & 0x80) {
+		return -(0x10000 - ((int2 << 8) | int1)) / 0x8000;
+	} else {
+		return ((int2 << 8) | int1) / 0x7fff;
+	}
+};
 const signed16ToFloat32 = () => {
-	const uint8ToFloat = (int1, int2) => {
-		if (int2 & 0x80) {
-			return -(0x10000 - ((int2 << 8) | int1)) / 0x8000;
-		} else {
-			return ((int2 << 8) | int1) / 0x7fff;
-		}
-	};
 	return new TransformStream({
 		transform: (chunk, controller) => {
-			const fl = new Float32Array(chunk.byteLength / 2);
 			for (let i = 0, j = 0; i < chunk.length - 1; i += 2) {
-				fl[j++] = uint8ToFloat(chunk[i], chunk[i + 1]);
+				chunk[j++] = uint8ToFloat(chunk[i], chunk[i + 1]);
 			}
-			controller.enqueue(fl);
+			controller.enqueue(chunk);
 		},
 	});
 };
-onmessage = async ({ data: { url, port, wsMsg, sampleUrl } }) => {
-	if (url && port) {
-		fetch(url, {
-			cors: "cors",
-		})
-			.then((res) => res.text())
-			.then((txt) => {
-				postMessage(txt);
-			});
+onmessage = async ({ data: { port, sampleUrl } }) => {
+	let packageSkip = 0;
+	let frames = 0;
+	if (port) {
 		procPort = port;
+		postMessage({ init: 1 });
+		port.onmessage = ({ data: { loss, done, rms, event } }) => {
+			if (loss) {
+				packageSkip++;
+				postMessage({ rx1: "loss:" + packageSkip });
+			}
+			if (event) {
+				postMessage({ event: "started" });
+			}
+		};
 	}
 	if (sampleUrl && procPort) {
 		const { writable, readable } = new TransformStream();
 		fetch(sampleUrl)
-			.then((res) =>
-				res.body.pipeThrough(signed16ToFloat32()).pipeTo(writable)
-			)
+			.then((res) => {
+				let xform = sampleUrl.includes("f32le")
+					? new TransformStream({
+							transform: (chunk, controller) => {
+								controller.enqueue(new Uint32Array(chunk));
+							},
+					  })
+					: signed16ToFloat32();
+				res.body.pipeThrough(xform).pipeTo(writable);
+			})
 			.catch((err) => postMessage({ msg: "error:" + err.message }));
 		procPort.postMessage({ readable }, [readable]);
 	}

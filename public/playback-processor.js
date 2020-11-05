@@ -2,6 +2,7 @@ class PlaybackProcessor extends AudioWorkletProcessor {
 	constructor() {
 		super();
 		this.buffers = [];
+		this.started = false;
 		// this.fifo = Fifo(1024 * 10);
 		this.port.postMessage("initialized");
 		this.port.onmessage = async ({ data: { readable } }) => {
@@ -17,15 +18,24 @@ class PlaybackProcessor extends AudioWorkletProcessor {
 					that.buffers.push(value.slice(0, 128));
 					value = value.slice(128);
 				}
+				if (that.buffers.length > 50) {
+					that.started = true;
+					that.port.postMessage({ msg: "started" });
+				}
 				reader.read().then(process);
 			});
 		};
 	}
 
 	process(inputs, outputs, parameters) {
-		if (this.buffers.length === 0) {
+		if (this.started === false) {
 			return true;
 		}
+		if (this.buffers.length === 0) {
+			this.port.postMessage({ loss: 1 });
+			return true;
+		}
+
 		const dv = this.buffers.shift();
 		for (let i = 0; i < 128; i++) {
 			outputs[0][0][i] = dv[i];
