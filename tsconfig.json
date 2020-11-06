@@ -4,8 +4,7 @@
 		"strictNullChecks": false,
 		"target": "ES6",
 		"module": "ES2015",
-		"noImplicitAny": false,
-		"importHelpers": true,
+		"noImplicitAny": true,
 		"noUnusedLocals": false,
 		"removeComments": false,
 		"outDir": "./build/esm",
@@ -15,7 +14,6 @@
 		"experimentalDecorators": true,
 		"lib": ["es6", "dom", "es2015", "esnext"],
 		"baseUrl": "./"
-	
 	},
 	"include": ["./src/**/*.ts"]
 }

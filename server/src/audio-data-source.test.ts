@@ -6,7 +6,7 @@ describe("fileSource", () => {
 		const ctx = new SSRContext({ nChannels: 1 });
 
 		const file = new FileSource(ctx, {
-			filePath: "./samples/C_3_E_3_G_3-f32le-ac1.pcm",
+			filePath: "./bil.mp3",
 		});
 
 		const d = file.pullFrame();

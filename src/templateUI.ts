@@ -19,19 +19,10 @@ export function templateUI(): {
 	postRx1: (str: String) => void;
 	cp: HTMLDivElement;
 	appendNOde: (node: HTMLElement, name: string) => void;
-	appendScript: ShellPropts;
+	appendScript: (props: ShellPropts) => void;
 } {
 	const stdoutdiv: HTMLDivElement = document.querySelector("#stdout");
-	if (!stdoutdiv) {
-		document.body.innerHTML += `<div id='container'>
-		<div class='relative'>
-			<div id='rx1'></div>
-			<div id='stdout'></div>
-			<div id='cp'></div>
-			<input size=80 autofocus />
-		</div>
-	</div>`;
-	}
+
 	const rx1Div: HTMLDivElement = document.querySelector<HTMLDivElement>(
 		"div#rx1"
 	);
@@ -42,13 +33,21 @@ export function templateUI(): {
 	let rx1 = "";
 	let upcursor = 0;
 	let t0 = null;
-
+	let prompt = "guest@grepawk.com >";
+	let fgproc = null;
 	window.onkeydown = (e: KeyboardEvent) => {
 		stdin.focus();
 		if (e.key === "Enter") {
-			stdout(stdin.value);
-			stdin.value = "";
 			upcursor = 0;
+			if (winthos[stdin.value]) {
+				fgproc = winthos[stdin.value];
+				prompt = fgproc.prompt;
+				stdout("reset clock");
+			}
+			if (prompt !== "") {
+				stdout(stdin.value.replace(prompt, ""));
+			}
+			stdin.value = fgproc && fgproc.prompt;
 		}
 
 		if (e.key === "ArrowUp" || e.key === "ArrowDown") {
@@ -61,14 +60,14 @@ export function templateUI(): {
 	};
 	function render() {
 		if (!stdoutdiv) {
-			document.body.innerHTML += `<div id='container'>
-			<div class='relative'>
-				<div id='rx1'></div>
-				<div id='stdout'></div>
-				<div id='cp'></div>
-				<input size=80 autofocus />
-			</div>
-		</div>`;
+			// 	document.body.innerHTML += `<div id='container'>
+			// 	<div class='relative'>
+			// 		<div id='rx1'></div>
+			// 		<div id='stdout'></div>
+			// 		<div id='cp'></div>
+			// 		<div>${prompt}<input size=80 autofocus /></div>
+			// 	</div>
+			// </div>`;
 		}
 		const divs = stdoutdiv.querySelectorAll("div");
 		for (let i = 0; i < stdoutBuffer.length; i++) {
@@ -93,6 +92,12 @@ export function templateUI(): {
 		});
 	};
 	const stdout = (str) => {
+		if (fgproc !== null) {
+			stdoutBuffer.push(str);
+			stdoutBuffer.push(fgproc.io(str));
+			render();
+			return;
+		}
 		if (str === "init_clock") t0 = performance.now();
 		else if (str === "reset clock") t0 = null;
 		else if (str.toString().substring(0, 2) === "vd:") {

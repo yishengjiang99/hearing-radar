@@ -3,11 +3,9 @@ import { AudioDataSource, FileSource, Oscillator } from "./audio-data-source";
 import { spawn } from "child_process";
 import { createServer, createConnection, Socket } from "net";
 
-type Time = [number, number];
-const timediff = (t1: Time, t2: Time) => {
-	return t1[0] - t2[0] + (t1[1] - t2[1]) / 0xffffffff;
+const timediff = (t1: number, t2: number) => {
+	return t1 - t2;
 };
-
 //#region
 export interface CtxProps {
 	nChannels?: number;
@@ -22,8 +20,8 @@ export class SSRContext {
 	playing: boolean;
 	sampleRate: number;
 	fps: number;
-	t0: Time;
-	lastFrame: Time;
+	t0: number;
+	lastFrame: number;
 	output: Writable;
 	frameNumber: number;
 	inputs: AudioDataSource[] = [];
@@ -85,26 +83,31 @@ export class SSRContext {
 		return this.samplesPerFrame * this.sampleArray.BYTES_PER_ELEMENT;
 	}
 	get currentTime() {
-		return timediff(process.hrtime(), this.t0);
+		return timediff(process.uptime(), this.t0);
 	}
 	connect(destination: Writable) {
 		this.output = destination;
 	}
 	start = () => {
 		console.log("starting");
-		this.t0 = process.hrtime();
+		this.t0 = process.uptime();
 		this.playing = true;
 		let that = this;
 		let ok = true;
 		this.output.on("drain", () => (ok = true));
 		function loop() {
 			if (that.playing === false) return;
-			if (!that.lastFrame) that.lastFrame = that.t0;
-			const elapsed = timediff(process.hrtime(), that.lastFrame);
+			if (!that.lastFrame) {
+				that.lastFrame = process.uptime();
+				that.pump();
+				that.frameNumber++;
+				setTimeout(loop, 0);
+			}
+			const elapsed = timediff(process.uptime(), that.lastFrame);
 			//console.log(backpressure, elapsed);
-			if (ok && elapsed > that.secondsPerFrame) {
-				that.lastFrame = process.hrtime();
-				ok = that.pump();
+			if (!that.lastFrame || elapsed > that.secondsPerFrame) {
+				that.lastFrame = process.uptime();
+				that.pump();
 				that.frameNumber++;
 			}
 			setTimeout(loop, 0);

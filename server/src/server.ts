@@ -22,7 +22,7 @@ import { createReadStream, exists, existsSync, readFileSync } from "fs";
 import { create } from "domain";
 
 const express = require("express");
-var router: Router = express.Router();
+export const router: Router = express.Router();
 router.use("*", (req, res, next) => {
 	res.set("Access-Control-Allow-Origin", "*");
 	next();
@@ -75,12 +75,16 @@ router.use((req: Request, res: Response) => {
 		res.end(`
 		<html>
 		<head>
+	<script>
+
+	</script>
 		<style>${readFileSync("../public/style.css")}</style>
 		</head>
 		<body>
 		<div id='container'>
 			<div class='relative'>
-				<div id='menu'>${execSync("ls -R samples/*.pcm")
+				<div id='menu'>
+				${execSync("ls -R samples/*.pcm")
 					.toString()
 					.trim()
 					.split(/\s+/)

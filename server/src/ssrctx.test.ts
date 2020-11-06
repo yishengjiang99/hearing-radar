@@ -1,13 +1,9 @@
-import { Oscillator } from "./audio-data-source";
+import { FileSource, Oscillator } from "./audio-data-source";
 import { SSRContext, CtxProps } from "./ssrctx";
 import { Writable } from "stream";
+import { spawn } from "child_process";
+import { doesNotMatch } from "assert";
 const expect = require("chai").expect;
-
-describe("simple math", () => {
-	it("2+2=4", () => {
-		expect(2 + 2).to.equal(4);
-	});
-});
 
 describe("ssrctx", () => {
 	it("sets framerate, bitdepths etc", (done) => {
@@ -33,6 +29,7 @@ describe("ssrctx", () => {
 				expect(chunk.byteLength).to.equal(ctx.blockSize);
 				ctx.stop();
 				done();
+				return;
 				cb(null);
 			},
 		});
@@ -49,5 +46,34 @@ describe("ssrctx", () => {
 		b.writeInt16LE(255, 0);
 		expect(b[0]).to.equal(1 * 0xff);
 		done();
+	});
+	it("writes sufficient amount of data for playback", (done) => {
+		const ctx = new SSRContext({
+			nChannels: 2,
+			bitDepth: 32,
+			sampleRate: 44100,
+			fps: 1 / 44100,
+		});
+		const fss = new FileSource(ctx, {
+			filePath: "./byebyebye.pcm",
+		});
+		fss.connect(ctx);
+		ctx.connect(
+			spawn("ffplay", [
+				"-f",
+				"f32le",
+				"-ac",
+				"2",
+				"-ar",
+				"44100",
+				"-i",
+				"pipe:0",
+			]).stdin
+		);
+		ctx.start();
+		setTimeout(() => {
+			expect(ctx.frameNumber).greaterThan(200);
+			done();
+		}, 1000);
 	});
 });
