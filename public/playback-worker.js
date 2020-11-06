@@ -1,4 +1,4 @@
-import Module from "./f32.wasmmodule.js";
+require("./w");
 
 let ws, procPort;
 
