@@ -21,7 +21,8 @@ export async function initUploader(
 
 		stdout("upload proc loaded");
 		const worker = new Worker(
-			"upload-worker.js?t=" + new Date().getMilliseconds()
+			"upload-worker.js?t=" + new Date().getMilliseconds(),
+			{ type: "module" }
 		);
 		worker.postMessage({ port: uploadProcessor.port }, [
 			uploadProcessor.port,

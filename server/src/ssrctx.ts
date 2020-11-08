@@ -1,13 +1,10 @@
 import { Writable } from "stream";
 import { AudioDataSource, FileSource, Oscillator } from "./audio-data-source";
-import { spawn } from "child_process";
-import { createServer, createConnection, Socket } from "net";
 import { F32toU32, U32toF32 } from "./kodak";
 type Time = [number, number];
 const timediff = (t1: Time, t2: Time) => {
 	return t1[0] - t2[0] + (t1[1] - t2[1]) / 0xffffffff;
 };
-
 //#region
 export interface CtxProps {
 	nChannels?: number;
@@ -114,9 +111,9 @@ export class SSRContext {
 	connect(destination: Writable) {
 		this.output = destination;
 	}
-	start = (length?: number) => {
+	start = () => {
+		console.log("starting");
 		this.t0 = process.hrtime();
-		if (length) this.end = length;
 		this.playing = true;
 		let that = this;
 		let ok = true;
@@ -124,9 +121,8 @@ export class SSRContext {
 			if (that.playing === false) return;
 			if (that.end <= that.frameNumber) return;
 			if (
-				!that.lastFrame ||
 				timediff(process.hrtime(), that.lastFrame) >
-					that.secondsPerFrame
+				0.8 * that.secondsPerFrame
 			) {
 				that.lastFrame = process.hrtime();
 				ok = that.pump();
@@ -153,27 +149,7 @@ export class Encoder {
 		let f = value;
 		switch (this.bitDepth) {
 			case 32:
-				let sign = 0,
-					fnorm = f,
-					shift = 0;
-				if (f < 0) {
-					sign = 1;
-					fnorm = -f;
-				}
-				while (fnorm >= 2.0) {
-					fnorm /= 2.0;
-					shift++;
-				}
-				while (fnorm < 1.0) {
-					fnorm *= 2;
-					shift--;
-				}
-				fnorm = fnorm - 1.0;
-
-				const sigfigs = fnorm * ((1 << 23) + 0.5);
-				const exp = shift + ((1 << (8 - 1)) - 1);
-				const val = (sign << 31) | (exp << 23) | sigfigs;
-				buffer.writeUInt32LE(val, index);
+				buffer.writeUInt32LE(F32toU32(value), index);
 				break;
 			case 16:
 				buffer.writeInt16LE(

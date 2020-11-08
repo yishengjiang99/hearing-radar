@@ -9,7 +9,11 @@ describe("fileSource", () => {
 	it("reads from a file", (done) => {
 		const ctx = new SSRContext({ nChannels: 1 });
 		const file = new FileSource(ctx, {
+<<<<<<< HEAD
 			filePath: sampleDir("gg.pcm"),
+=======
+			filePath: "./bil.mp3",
+>>>>>>> master
 		});
 		const d = file.pullFrame();
 		expect(d).to.exist;

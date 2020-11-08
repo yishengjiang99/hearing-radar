@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>FFmpeg Unit Test</title>
+		<link rel="stylesheet" href="../db/simple-console.css" />
+	</head>
+	<body>
+		<div id="mocha"></div>
+		<script src="../db/mocha.js"></script>
+		<script src="../db/chai.js"></script>
+		<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.9.4/dist/ffmpeg.min.js"></script>
+		<script src="../db/simple-console.js"></script>
+
+		<script>
+			window.expect = chai.expect;
+			mocha.run();
+		</script>
+		<script type="module">
+			const con = SimpleConsole({
+				handleCommand: (cmd) => {
+					con.log(cmd);
+				},
+				placeholder: "Welcome!",
+				storageID: "2",
+			});
+			mocha.setup("bdd");
+
+			const TIMEOUT = 60000;
+			const IS_BROWSER =
+				typeof window !== "undefined" &&
+				typeof window.document !== "undefined";
+			const OPTIONS = {
+				corePath: IS_BROWSER
+					? "http://localhost:3000/node_modules/@ffmpeg/core/dist/ffmpeg-core.js"
+					: "@ffmpeg/core",
+			};
+			const FLAME_MP4_LENGTH = 100374;
+			const META_FLAME_MP4_LENGTH = 100408;
+			const META_FLAME_MP4_LENGTH_NO_SPACE = 100404;
+			document.body.append(con.element);
+			con.element.classList.add("console-open", "console-anchor-bottom");
+			const { createFFmpeg, fetchFile } = FFmpeg;
+			const ffmpeg = createFFmpeg({ log: true });
+			// con.log("loading ffmpeg");
+			// ffmpeg.FS.mkdir("html");
+			// ffmpeg.FS.mount(MEMFS, { root: "." }, "src");
+			// ffmpeg.load();
+			mocha.run();
+			(async () => {
+				await ffmpeg.load();
+				describe("ffmpeg load", () => {
+					it("will load ffmpeg", () => {
+						expect(ffmpeg).to.exist;
+					});
+				});
+				con.log("loaded");
+
+				describe("load()", () => {
+					it("should throw error when not called before FS() and run()", () => {
+						const ffmpeg = createFFmpeg(OPTIONS);
+						expect(() => ffmpeg.FS("readdir", "dummy")).to.throw();
+						expect(() => ffmpeg.run("-h")).to.throw();
+					});
+
+					it("should throw error when running load() more than once", async () => {
+						const ffmpeg = createFFmpeg(OPTIONS);
+						await ffmpeg.load();
+						try {
+							await ffmpeg.load();
+						} catch (e) {
+							expect(e).to.be.an("Error");
+						}
+					}).timeout(TIMEOUT);
+				});
+
+				describe("isLoaded()", () => {
+					it("should return true when loaded", async () => {
+						const ffmpeg = createFFmpeg(OPTIONS);
+						await ffmpeg.load();
+						expect(ffmpeg.isLoaded()).to.equal(true);
+					}).timeout(TIMEOUT);
+				});
+
+				describe("run()", () => {
+					it("should not allow to run two command at the same time", async () => {
+						const ffmpeg = createFFmpeg(OPTIONS);
+						await ffmpeg.load();
+						ffmpeg.run("-h");
+						setTimeout(() => {
+							try {
+								ffmpeg.run("-h");
+							} catch (e) {
+								expect(e).to.be.an(Error);
+							}
+						}, 500);
+					}).timeout(123213);
+				});
+
+				describe("FS()", () => {
+					const ffmpeg = createFFmpeg(OPTIONS);
+					before(async function cb() {
+						this.timeout(0);
+						await ffmpeg.load();
+					});
+
+					it("should throw error when readdir for invalid path ", () => {
+						expect(() => ffmpeg.FS("readdir", "/invalid")).to.throw(
+							/readdir/
+						);
+					});
+					it("should throw error when readFile for invalid path ", () => {
+						expect(() =>
+							ffmpeg.FS("readFile", "/invalid")
+						).to.throw(/readFile/);
+					});
+					it("should throw an default error ", () => {
+						expect(() => ffmpeg.FS("unlink", "/invalid")).to.throw(
+							/Oops/
+						);
+					});
+				});
+			})();
+			mocha.run();
+		</script>
+	</body>
+</html>

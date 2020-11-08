@@ -1,4 +1,4 @@
-import { Oscillator } from "./audio-data-source";
+import { FileSource, Oscillator } from "./audio-data-source";
 import { SSRContext, CtxProps } from "./ssrctx";
 import { MemoryWritable } from "grep-transform";
 import { resolve } from "path";
@@ -44,5 +44,34 @@ describe("users play music in browser at 32bit", () => {
 		const ctx = SSRContext.fromFileName(sampleDir("2L-f32le.pcm"));
 		expect(ctx.bitDepth).to.equal(32);
 		expect(ctx.sampleRate).to.equal(SSRContext.defaultProps.sampleRate);
+	});
+	it("writes sufficient amount of data for playback", (done) => {
+		const ctx = new SSRContext({
+			nChannels: 2,
+			bitDepth: 32,
+			sampleRate: 44100,
+			fps: 1 / 44100,
+		});
+		const fss = new FileSource(ctx, {
+			filePath: "./byebyebye.pcm",
+		});
+		fss.connect(ctx);
+		ctx.connect(
+			spawn("ffplay", [
+				"-f",
+				"f32le",
+				"-ac",
+				"2",
+				"-ar",
+				"44100",
+				"-i",
+				"pipe:0",
+			]).stdin
+		);
+		ctx.start();
+		setTimeout(() => {
+			expect(ctx.frameNumber).greaterThan(200);
+			done();
+		}, 1000);
 	});
 });

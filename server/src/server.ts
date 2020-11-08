@@ -90,10 +90,15 @@ router.use((req: Request, res: Response) => {
 		res.end(`
 		<html>
 		<head>
+	<script>
+
+	</script>
 		<style>${readFileSync("../public/style.css")}</style>
 		</head>
 		<body>
 		<div id='container'>
+		</div>
+		<div id='c2'>
 			<div id='menu'>
 			${files.map((file) => `<li><a href='${file}'>${file}</a></li>`).join("<br>")}
 			</div>

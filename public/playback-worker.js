@@ -1,4 +1,7 @@
+require("./w");
+
 let ws, procPort;
+
 let sharedStream = false;
 let buffered = 0;
 const uint8ToFloat = (int1, int2) => {
@@ -8,6 +11,7 @@ const uint8ToFloat = (int1, int2) => {
 		return ((int2 << 8) | int1) / 0x7fff;
 	}
 };
+
 const signed16ToFloat32 = () => {
 	return new TransformStream({
 		transform: (chunk, controller) => {

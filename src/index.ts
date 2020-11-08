@@ -1,71 +1,91 @@
-import { templateUI } from "./templateUI";
-
-let state = {
-	ctx: null,
-	worker: null,
+import { useState, useEffect, useCallback } from "react";
+import { ListMenu, Rx1, StandardOutput } from "./app.jsx";
+import * as React from "react";
+import { render } from "react-dom";
+interface AppState {
+	ctx: AudioContext;
+	worker: Worker;
+	processor: AudioWorkletNode;
+	msgs: string[];
 	stats: {
-		rms: 0,
-		buffered: 0,
-		loss: 0,
-	},
+		rms: number;
+		buffered: number;
+		loss: number;
+	};
+}
+export const IndexPage = ({ workerUrl, procUrl, apiUrl, menuLinks }) => {
+	const [state, setState] = useState<AppState>({
+		ctx: null,
+		worker: null,
+		processor: null,
+		msgs: null,
+		stats: {
+			rms: 0,
+			buffered: 0,
+			loss: 0,
+		},
+	});
+
+	const handleClick = useCallback((event: MouseEvent) => {
+		if (event.target instanceof HTMLLinkElement) {
+			state.worker.postMessage({ sampleUrl: event.target.href });
+		}
+	}, []);
+
+	useEffect(() => {
+		if (!state.ctx) {
+			setState((prevState: AppState) => {
+				return {
+					...prevState,
+					ctx: new AudioContext({ latencyHint: "playback" }),
+				};
+			});
+		}
+		if (state.ctx && !state.processor) {
+			state.ctx.audioWorklet
+				.addModule(procUrl)
+				.then(() => {
+					setState((prev: AppState) => {
+						prev.processor = new AudioWorkletNode(
+							state.ctx,
+							"playback-processor",
+							{
+								numberOfInputs: 0,
+								numberOfOutputs: 1,
+								outputChannelCount: [2],
+							}
+						);
+						return prev;
+					});
+				})
+				.catch((err: Error) => {
+					throw err;
+				});
+		}
+		if (state.ctx && state.processor && !state.worker) {
+			workerUrl;
+		}
+	}, [state.ctx, state.processor, state.worker]);
+	return React.createElement("<>", {}, [
+		React.createElement(ListMenu, {
+			menuLinks: menuLinks,
+			onClick: handleClick,
+		}),
+		React.createElement(StandardOutput, {
+			msgList: state.msgs,
+		}),
+		React.createElement(Rx1),
+	]);
 };
-async function init() {
-	let { cp, stdout, postRx1, appendNOde } = templateUI();
-	stdout("welcome");
-	stdout("init_clock");
 
-	if (!state.ctx) {
-		state.ctx = new AudioContext({ latencyHint: 3 });
-	}
-	if (state.ctx && !state.worker) {
-		const [worker, processor] = await initPlayback(
-			state.ctx,
-			stdout,
-			postRx1
-		);
-		state.worker = worker;
-		state.worker.onmessage = ({ data: { msg, rx1, event, stats } }) => {
-			if (msg) stdout(msg);
-			if (stats) postRx1(JSON.stringify(stats));
-			if (event) stdout(event);
-			if (stats) state.stats = stats;
-		};
-	}
-}
-
-export async function initPlayback(
-	ctx: AudioContext,
-	stdout: (str: string) => void,
-	postRx1: (str: string) => void
-): Promise<[Worker, AudioWorkletNode]> {
-	try {
-		await ctx.audioWorklet.addModule("playback-processor.js", {});
-
-		const node = new AudioWorkletNode(ctx, "playback-processor", {
-			numberOfInputs: 0,
-			numberOfOutputs: 1,
-			outputChannelCount: [2],
-		});
-		node.connect(ctx.destination);
-		const worker = new Worker("playback-worker.js", { type: "module" });
-		worker.postMessage({ port: node.port }, [node.port]);
-		stdout("worker init");
-		await new Promise((resolve, reject) => {
-			worker.onmessage = (e: MessageEvent) => resolve(e);
-		});
-		stdout("offline ctx init done");
-		return [worker, node];
-	} catch (e) {
-		stdout("ERROR: " + e.message);
-		throw e;
-	}
-}
-
-document.querySelectorAll("a").forEach((a) =>
-	a.addEventListener("click", async function (_e: MouseEvent) {
-		_e.preventDefault();
-		init().then(() => {
-			state.worker.postMessage({ sampleUrl: a.href });
-		});
-	})
-);
+document.onload = () => {
+	render(
+		React.createElement(IndexPage, {
+			apiUrl: "/index.php",
+			workerUrl: "playback-worker",
+			procUrl: "playback-processor",
+			menuLinks: [],
+		}),
+		document.querySelectorAll("container")
+	);
+};

@@ -33,11 +33,16 @@
 	position: relative;
 }
 #stdout {
+<<<<<<< HEAD
 	position: fixed;
 	top: 0;
 	left: 30%;
 	width: 50%;
 	height: 100%;
+=======
+	position: absolute;
+	height: 80%;
+>>>>>>> master
 }
 #stdout div {
 	background-color: #121212;
@@ -48,6 +53,14 @@
 	left: 0px;
 	position: fixed;
 	width: 300px;
+}
+#menu {
+	right: 10px;
+	top: 10px;
+	max-height: 200px;
+	width: 400px;
+	position: absolute;
+	overflow-y: scroll;
 }
 #cp {
 	position: fixed;
@@ -64,13 +77,14 @@
 	min-width: 50px;
 }
 input {
-	width: 100%;
+	width: 80%;
 	bottom: 0px;
-	left: 0;
-	height: 20px;
-	position: fixed;
+	margin-bottom: 10px;
+	left: 10%;
+	height: 30px;
 	background-color: #333333;
 	color: white;
+	position: fixed;
 }
 canvas {
 	position: absolute;
