@@ -2,7 +2,6 @@ import { SSRContext } from "./ssrctx";
 import { openSync, readSync, read } from "fs";
 import { Readable } from "stream";
 import { EventEmitter } from "events";
-const Fifo = require("grep-fifo");
 
 export interface AudioDataSource {
 	ctx: SSRContext;
@@ -53,23 +52,21 @@ export class FileSource extends EventEmitter implements AudioDataSource {
 		super();
 		this.fd = openSync(filePath, "r");
 		this.ctx = ctx;
-		this.offset = 0;
+		this.offset = 0x0067ed0;
 		this.output = Buffer.alloc(0);
 		this.readBuffer(10);
 	}
 	readBuffer(m) {
 		const buffer = Buffer.allocUnsafe(this.ctx.blockSize * m);
-
 		const n = readSync(this.fd, buffer, 0, buffer.byteLength, this.offset);
 		this.offset += buffer.byteLength;
-		console.log(n, "read");
 
 		this.output = Buffer.concat([this.output, buffer]);
 	}
 
 	pullFrame(): Buffer {
 		if (this.output.byteLength < this.ctx.blockSize * 5) {
-			this.readBuffer(10);
+			this.readBuffer(12);
 		}
 		const ret = this.output.slice(0, this.ctx.blockSize);
 		this.output = this.output.slice(this.ctx.blockSize);
@@ -86,3 +83,9 @@ export class FileSource extends EventEmitter implements AudioDataSource {
  *  440 / this.fps
  *
  */
+// let o = new Oscillator(SSRContext.fromFileName("f32le-ac2"), {
+// 	frequency: 440,
+// });
+// const b = o.pullFrame();
+// console.log(b);
+//console.log(o.pullFrame());

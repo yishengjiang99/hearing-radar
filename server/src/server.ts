@@ -5,6 +5,7 @@ import { SSRContext } from "./ssrctx";
 import { basename, resolve } from "path";
 import { PassThrough, Transform } from "stream";
 import { createInterface } from "readline";
+import { get } from "https";
 import {
 	Application,
 	Request,
@@ -21,8 +22,13 @@ import {
 import { createReadStream, exists, existsSync, readFileSync } from "fs";
 import { create } from "domain";
 
+let files = [
+	"synth/440/-ac2-f32le",
+	"synth/440/-ac2-s16le",
+	...execSync("ls samples/*pcm").toString().trim().split(/\s+/),
+];
 const express = require("express");
-var router: Router = express.Router();
+export const router: Router = express.Router();
 router.use("*", (req, res, next) => {
 	res.set("Access-Control-Allow-Origin", "*");
 	next();
@@ -46,26 +52,35 @@ router.get("/r", (req, res: Response) => {
 		.on("end", () => res.end());
 });
 router.get("/samples/:filename", (req, res) => {
+	const filename = resolve(__dirname, "../samples/", req.params.filename);
+	if (!existsSync(filename)) {
+		res.writeHead(404);
+		return;
+	}
 	res.writeHead(200, {
 		"Access-Control-Allow-Origin": "*",
 		"Content-Type": "application/octet-stream",
 		"Content-Disposition": "inline",
 	});
-	const ctx = new SSRContext({
-		nChannels: 2,
-		sampleRate: 48000,
-		fps: 48000 / 128 / 50,
-		bitDepth: 16,
-	});
+	const ctx = SSRContext.fromFileName(filename);
+
 	ctx.connect(res);
 	const fsrc = new FileSource(ctx, {
-		filePath: require("path").resolve(
-			__dirname,
-			"../samples/",
-			req.params.filename
-		),
+		filePath: filename,
 	});
 	fsrc.connect(ctx);
+	ctx.start();
+});
+router.get("/synth/:freq/:desc", (req, res) => {
+	res.writeHead(200, {
+		"Access-Control-Allow-Origin": "*",
+		"Content-Type": "application/octet-stream",
+		"Content-Disposition": "inline",
+	});
+	const ctx = SSRContext.fromFileName(req.params.desc);
+	const osc = new Oscillator(ctx, { frequency: parseFloat(req.params.freq) });
+	osc.connect(ctx);
+	ctx.connect(res);
 	ctx.start();
 });
 router.use("/app", express.static("../../public"));
@@ -79,24 +94,17 @@ router.use((req: Request, res: Response) => {
 		</head>
 		<body>
 		<div id='container'>
-			<div class='relative'>
-				<div id='menu'>${execSync("ls -R samples/*.pcm")
-					.toString()
-					.trim()
-					.split(/\s+/)
-					.map((file) => `<li><a href='#${file}'>${file}</a><li>`)
-					.join("<br>")}
-				</div>
-				<div id='rx1'></div>
-				<div id='stdout'>
-					Welcome!
-				</div>
-				<div id='cp'></div>
-				<input size=80 autofocus />
-
+			<div id='menu'>
+			${files.map((file) => `<li><a href='${file}'>${file}</a></li>`).join("<br>")}
+			</div>
+			<div id='rx1'>panel</div>				
+			<div id='stdout'>
+		
+			</div>
+			<div id='cp'><button>btn<button></div>
+			<input size=80 autofocus />	
 			</div>
 		</div>
-		<audio controls src='classy.flac'>
 
 		<script src='build/Main.js'>
 		</script>

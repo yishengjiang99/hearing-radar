@@ -1,14 +1,16 @@
 import { expect } from "chai";
 import { FileSource } from "./audio-data-source";
 import { SSRContext } from "./ssrctx";
+
+const sampleDir = (filename) =>
+	require("path").resolve(__dirname, "../samples", filename);
+
 describe("fileSource", () => {
 	it("reads from a file", (done) => {
 		const ctx = new SSRContext({ nChannels: 1 });
-
 		const file = new FileSource(ctx, {
-			filePath: "./samples/C_3_E_3_G_3-f32le-ac1.pcm",
+			filePath: sampleDir("gg.pcm"),
 		});
-
 		const d = file.pullFrame();
 		expect(d).to.exist;
 		expect(d.byteLength).to.equal(ctx.blockSize);
@@ -16,4 +18,8 @@ describe("fileSource", () => {
 
 		//	expect(buffer.byteLength).to.equal(ctx.blockSize);
 	});
+});
+
+describe("", () => {
+	it("", () => {});
 });

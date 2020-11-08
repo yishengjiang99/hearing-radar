@@ -1,78 +1,114 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.router = void 0;
 const child_process_1 = require("child_process");
 const audio_data_source_1 = require("./audio-data-source");
 const ssrctx_1 = require("./ssrctx");
-const stream_1 = require("stream");
-const grep_transformers_1 = require("grep-transformers");
-child_process_1.spawn("ls", "-R -m ./db".split(" "), {
-    stdio: ["pipe", "pipe", "pipe"],
-}).stdout.pipe(process.stdout);
-child_process_1.spawn("ls", "-R -m ./db".split(" ")).on("error", console.error);
-// .stdout.pipe(new ReadlineTransform())
-// .pipe(new GraphLS())
-// .pipe(
-// 	new Transform({
-// 		transform: (chunk, enc, cb) => {
-// 			cb(null, JSON.stringify(chunk));
-// 		},
-// 	})
-// )
-// .pipe(process.stdout);
-// .pipe(
-// 	new Transform({
-// 		transform: (chunk, enc, cb) => {
-// 			cb(null, JSON.stringify(chunk));
-// 		},
-// 	})
-// )
-// .pipe(process.stdout);
-process.exit();
+const path_1 = require("path");
+const grep_transform_1 = require("grep-transform");
+const fs_1 = require("fs");
+let files = [
+    "synth/440/-ac2-f32le",
+    "synth/440/-ac2-s16le",
+    ...child_process_1.execSync("ls samples/*pcm").toString().trim().split(/\s+/),
+];
 const express = require("express");
-var router = express.Router();
-router.use("*", (req, res, next) => {
+exports.router = express.Router();
+exports.router.use("*", (req, res, next) => {
     res.set("Access-Control-Allow-Origin", "*");
     next();
 });
-router.use("/mp3", (req, res) => {
+exports.router.use("/mp3", (req, res) => {
     const files = child_process_1.execSync("ls -R **/*.mp3").toString().trim().split(/\s+/);
     res.json(files);
     res.end();
 });
-router.get("/db", (req, res) => {
-    child_process_1.spawn("ls", "-R -m db".split(" "))
-        .stdout.pipe(new grep_transformers_1.ReadlineTransform())
-        .pipe(new grep_transformers_1.GraphLS())
-        .pipe(new stream_1.Transform({
-        transform: (chunk, enc, cb) => {
-            cb(null, JSON.stringify(chunk));
-        },
-    }))
-        .pipe(res);
+exports.router.get("/r", (req, res) => {
+    res.status(200);
+    res.contentType("text/html");
+    grep_transform_1.LSSource(path_1.resolve(__dirname, "../db"))
+        .pipe(new grep_transform_1.ReadlineTransform())
+        .pipe(new grep_transform_1.LSGraph())
+        .on("data", (d) => {
+        res.write(d.toString());
+    })
+        .on("end", () => res.end());
 });
-router.get("/file/:filename", (req, res) => {
+exports.router.get("/samples/:filename", (req, res) => {
+    const filename = path_1.resolve(__dirname, "../samples/", req.params.filename);
+    if (!fs_1.existsSync(filename)) {
+        res.writeHead(404);
+        return;
+    }
     res.writeHead(200, {
         "Access-Control-Allow-Origin": "*",
         "Content-Type": "application/octet-stream",
         "Content-Disposition": "inline",
     });
-    const filename = req.url.replace("/file/", "");
-    const ctx = new ssrctx_1.SSRContext({
-        nChannels: 1,
-        sampleRate: 44100,
-        fps: 44100 / 128,
-        bitDepth: 16,
-    });
+    const ctx = ssrctx_1.SSRContext.fromFileName(filename);
     ctx.connect(res);
     const fsrc = new audio_data_source_1.FileSource(ctx, {
-        filePath: require("path").resolve(__dirname, "..", filename),
+        filePath: filename,
     });
     fsrc.connect(ctx);
     ctx.start();
 });
+exports.router.get("/synth/:freq/:desc", (req, res) => {
+    res.writeHead(200, {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": "inline",
+    });
+    const ctx = ssrctx_1.SSRContext.fromFileName(req.params.desc);
+    const osc = new audio_data_source_1.Oscillator(ctx, { frequency: parseFloat(req.params.freq) });
+    osc.connect(ctx);
+    ctx.connect(res);
+    ctx.start();
+});
+exports.router.use("/app", express.static("../../public"));
+exports.router.use((req, res) => {
+    const fpath = path_1.resolve(__dirname, `../../public/${req.url}`);
+    if (req.url === "/") {
+        res.end(`
+		<html>
+		<head>
+		<style>${fs_1.readFileSync("../public/style.css")}</style>
+		</head>
+		<body>
+		<div id='container'>
+			<div id='menu'>
+			${files.map((file) => `<li><a href='${file}'>${file}</a></li>`).join("<br>")}
+			</div>
+			<div id='rx1'>panel</div>				
+			<div id='stdout'>
+		
+			</div>
+			<div id='cp'><button>btn<button></div>
+			<input size=80 autofocus />	
+			</div>
+		</div>
+
+		<script src='build/Main.js'>
+		</script>
+		</body>
+		</html>
+		`);
+    }
+    else if (fs_1.existsSync(fpath)) {
+        res.contentType(require("mime").lookup(path_1.basename(fpath)));
+        res.sendFile(fpath);
+    }
+    else {
+        res.end(path_1.resolve(__dirname, `../../public/${req.url}`));
+    }
+});
 if (require.main === module) {
     const app = express();
-    app.use("/", router);
+    app.engine("tag", function (filename, options, callback) {
+        function toks(str, ...args) { }
+    });
+    app.use("/node", exports.router);
+    app.use("/", exports.router);
     app.listen(3000);
 }
 // const p = spawn("ls", ["-R", "./db"]);

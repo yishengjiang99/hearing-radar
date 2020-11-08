@@ -14,14 +14,11 @@ class PlaybackProcessor extends AudioWorkletProcessor {
 					return;
 				}
 				let offset = 0;
-				while (value.length >= 128) {
-					that.buffers.push(value.slice(0, 128));
-					value = value.slice(128);
+				while (value.length >= 128 * 2) {
+					that.buffers.push(value.slice(0, 128 * 2));
+					value = value.slice(128 * 2);
 				}
-				if (that.buffers.length > 50) {
-					that.started = true;
-					that.port.postMessage({ msg: "started" });
-				}
+				that.started = true;
 				reader.read().then(process);
 			});
 		};
@@ -37,14 +34,24 @@ class PlaybackProcessor extends AudioWorkletProcessor {
 		}
 
 		const dv = this.buffers.shift();
-		for (let i = 0; i < 128; i++) {
-			outputs[0][0][i] = dv[i];
-			outputs[0][1][i] = dv[i]; //* 2];
+		for (let i = 0; i < 128 * 2; i++) {
+			outputs[0][0][i] = dv[i * 2];
+			outputs[0][1][i] = dv[i * 2 + 1]; //* 2];
 		}
-		// const rsum = outputs[0][0].reduce((sum, v, idx) => {
-		// 	return (sum += v * v);
-		// }, 0);
-		// this.port.postMessage({ rx1: Math.sqrt(rsum / 128) });
+		if (Math.random() < 0.1) {
+			const rsum = outputs[0][0].reduce((sum, v, idx) => {
+				return (sum += v * v);
+			}, 0);
+
+			this.port.postMessage({
+				stats: {
+					buffered: this.buffers.length,
+					rms: Math.sqrt(rsum / 128),
+					loss: this.loss,
+				},
+			});
+		}
+
 		return true;
 	}
 }

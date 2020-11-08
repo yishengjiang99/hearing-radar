@@ -2,7 +2,7 @@ import { Writable } from "stream";
 import { AudioDataSource, FileSource, Oscillator } from "./audio-data-source";
 import { spawn } from "child_process";
 import { createServer, createConnection, Socket } from "net";
-
+import { F32toU32, U32toF32 } from "./kodak";
 type Time = [number, number];
 const timediff = (t1: Time, t2: Time) => {
 	return t1[0] - t2[0] + (t1[1] - t2[1]) / 0xffffffff;
@@ -28,6 +28,27 @@ export class SSRContext {
 	frameNumber: number;
 	inputs: AudioDataSource[] = [];
 	bitDepth: 32 | 16 | 8;
+	static fromFileName = (filename: string): SSRContext => {
+		const nChannels = filename.match(/\-ac(\d+)/)?.index || 2;
+		const sampleRate = filename.match(/\-ar(\d+)/)?.index || 44100; // ? filename.match(/\-ar(\d+)/).index
+		const bitDepth = filename.includes("-f32le") ? 32 : 16;
+		console.log(
+			"arsed ",
+			{
+				sampleRate,
+				nChannels,
+				bitDepth,
+				fps: sampleRate / 128,
+			},
+			filename
+		);
+		return new SSRContext({
+			sampleRate,
+			nChannels,
+			bitDepth,
+			fps: sampleRate / 128,
+		});
+	};
 
 	static defaultProps: CtxProps = {
 		nChannels: 2,
@@ -35,6 +56,7 @@ export class SSRContext {
 		fps: 44100 / 128,
 		bitDepth: 32,
 	};
+	end: number;
 
 	constructor(props: CtxProps = SSRContext.defaultProps) {
 		const { nChannels, sampleRate, fps, bitDepth } = {
@@ -65,7 +87,7 @@ export class SSRContext {
 	get sampleArray() {
 		switch (this.bitDepth) {
 			case 32:
-				return Float32Array;
+				return Uint32Array;
 			case 16:
 				return Int16Array;
 			case 8:
@@ -77,7 +99,9 @@ export class SSRContext {
 	pump(): boolean {
 		let ok = true;
 		for (let i = 0; i < this.inputSources.length; i++) {
-			ok = ok && this.output.write(this.inputSources[i].pullFrame());
+			const b = this.inputSources[i].pullFrame();
+			console.log(b.byteLength);
+			this.output.write(b);
 		}
 		return ok;
 	}
@@ -90,25 +114,29 @@ export class SSRContext {
 	connect(destination: Writable) {
 		this.output = destination;
 	}
-	start = () => {
-		console.log("starting");
+	start = (length?: number) => {
 		this.t0 = process.hrtime();
+		if (length) this.end = length;
 		this.playing = true;
 		let that = this;
 		let ok = true;
-		this.output.on("drain", () => (ok = true));
 		function loop() {
 			if (that.playing === false) return;
-			if (!that.lastFrame) that.lastFrame = that.t0;
-			const elapsed = timediff(process.hrtime(), that.lastFrame);
-			//console.log(backpressure, elapsed);
-			if (ok && elapsed > that.secondsPerFrame) {
+			if (that.end <= that.frameNumber) return;
+			if (
+				!that.lastFrame ||
+				timediff(process.hrtime(), that.lastFrame) >
+					that.secondsPerFrame
+			) {
 				that.lastFrame = process.hrtime();
 				ok = that.pump();
 				that.frameNumber++;
 			}
-			setTimeout(loop, 0);
+			setTimeout(loop, 1);
 		}
+		this.lastFrame = process.hrtime();
+		this.pump();
+
 		setImmediate(loop);
 	};
 
@@ -122,13 +150,30 @@ export class Encoder {
 		this.bitDepth = bitDepth;
 	}
 	encode(buffer: Buffer, value: number, index: number): void {
-		value = Math.max(-1, Math.min(value, +1));
+		let f = value;
 		switch (this.bitDepth) {
 			case 32:
-				buffer.writeInt32LE(
-					value > 0 ? value * 0x7fffffff : value * 0x80000000,
-					index * Float32Array.BYTES_PER_ELEMENT
-				);
+				let sign = 0,
+					fnorm = f,
+					shift = 0;
+				if (f < 0) {
+					sign = 1;
+					fnorm = -f;
+				}
+				while (fnorm >= 2.0) {
+					fnorm /= 2.0;
+					shift++;
+				}
+				while (fnorm < 1.0) {
+					fnorm *= 2;
+					shift--;
+				}
+				fnorm = fnorm - 1.0;
+
+				const sigfigs = fnorm * ((1 << 23) + 0.5);
+				const exp = shift + ((1 << (8 - 1)) - 1);
+				const val = (sign << 31) | (exp << 23) | sigfigs;
+				buffer.writeUInt32LE(val, index);
 				break;
 			case 16:
 				buffer.writeInt16LE(
@@ -144,14 +189,7 @@ export class Encoder {
 		}
 	}
 }
-// const ctx = new SSRContext({
-// 	nChannels: 1,
-// 	sampleRate: 44100,
-// 	fps: 44100 / 128,
-// 	bitDepth: 32,
-// });
-// const osc = new Oscillator(ctx, { frequency: 440 });
-// const filesrc = new FileSource(ctx, { filePath: "../no-dout-f32le.pcm" });
+
 // filesrc.connect(ctx);
 
 // ctx.connect(process.stdout);

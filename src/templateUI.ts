@@ -9,7 +9,7 @@ export type Shell = {
 };
 export type ShellPropts = {
 	name: string;
-	io: IOFunction;
+	io?: IOFunction;
 	prompt?: string;
 	context?: Heap;
 };

@@ -18,13 +18,16 @@ const signed16ToFloat32 = () => {
 		},
 	});
 };
+
 onmessage = async ({ data: { port, sampleUrl } }) => {
+	console.log(sampleUrl);
 	let packageSkip = 0;
 	let frames = 0;
 	if (port) {
 		procPort = port;
 		postMessage({ init: 1 });
-		port.onmessage = ({ data: { loss, done, rms, event } }) => {
+		port.onmessage = ({ data: { loss, done, stats, event, msg } }) => {
+			console.log({ loss, done, stats, event, msg });
 			if (loss) {
 				packageSkip++;
 				postMessage({ rx1: "loss:" + packageSkip });
@@ -32,22 +35,49 @@ onmessage = async ({ data: { port, sampleUrl } }) => {
 			if (event) {
 				postMessage({ event: "started" });
 			}
+			if (msg) {
+				postMessage({ msg });
+			}
+			if (stats) postMessage({ stats });
 		};
 	}
 	if (sampleUrl && procPort) {
+		postMessage({ event: "fetch " + sampleUrl });
 		const { writable, readable } = new TransformStream();
 		fetch(sampleUrl)
 			.then((res) => {
-				let xform = sampleUrl.includes("f32le")
-					? new TransformStream({
-							transform: (chunk, controller) => {
-								controller.enqueue(new Uint32Array(chunk));
-							},
-					  })
-					: signed16ToFloat32();
+				let xform;
+				if (sampleUrl.includes("f32le")) {
+					postMessage({ msg: "parsing f32le" });
+					xform = new TransformStream({
+						transform: (chunk, controller) => {
+							function U32toF32(i) {
+								if (i === 0) return 0;
+								let r = i & ((1 << 23) - 1);
+								r /= 1 << 23;
+								r += 1.0;
+								const bias = 127;
+								let shift = ((i >> 23) & 0xff) - bias;
+								for (; shift > 0; shift--) r *= 2;
+								for (; shift < 0; shift++) r /= 2;
+
+								return r;
+							}
+							let u32 = new Uint32Array(chunk);
+							let f32 = new Float32Array(chunk.length);
+							for (let i = 0; i < chunk.length; i++) {
+								f32[i] = U32toF32(chunk[i]);
+							}
+							controller.enqueue(f32);
+						},
+					});
+				} else {
+					xform = signed16ToFloat32();
+				}
 				res.body.pipeThrough(xform).pipeTo(writable);
 			})
 			.catch((err) => postMessage({ msg: "error:" + err.message }));
+
 		procPort.postMessage({ readable }, [readable]);
 	}
 };
