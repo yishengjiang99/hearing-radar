@@ -12,7 +12,10 @@ let state = {
 const { stdout, rx1Div, postRx1, postRx2, cp, appendNOde } = templateUI();
 
 export const initworker = async () => {
-	const ctx = new AudioContext({ sampleRate: 44100 });
+	const ctx = new AudioContext({
+		sampleRate: 48000,
+		latencyHint: "playback",
+	});
 	await ctx.audioWorklet.addModule("playback-processor.js", {});
 
 	const node = new AudioWorkletNode(ctx, "playback-processor", {

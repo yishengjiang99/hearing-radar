@@ -1,16 +1,32 @@
 export class SharedRingBuffer {
 	pt: SharedArrayBuffer;
-	state: Uint32Array;
+	state: Int32Array;
 	data: Float32Array;
 	dataDecimal: Uint32Array;
 	size: number;
+	audioCtxMeta: Int32Array;
+
 	constructor(size: number) {
 		this.pt = new SharedArrayBuffer(
-			32 + 32 + size * Float32Array.BYTES_PER_ELEMENT
+			Uint32Array.BYTES_PER_ELEMENT * 2 +
+				Uint32Array.BYTES_PER_ELEMENT * 2 +
+				size * Float32Array.BYTES_PER_ELEMENT
 		);
-		this.state = new Uint32Array(this.pt, 0, 2);
-		this.data = new Float32Array(this.pt, 64);
-		this.dataDecimal = new Uint32Array(this.pt, 64);
+		this.state = new Int32Array(this.pt, 0, 2);
+		this.audioCtxMeta = new Int32Array(
+			this.pt,
+			Int32Array.BYTES_PER_ELEMENT * 2,
+			2
+		);
+
+		this.data = new Float32Array(
+			this.pt,
+			Int32Array.BYTES_PER_ELEMENT * 2 + Int32Array.BYTES_PER_ELEMENT * 2
+		);
+		this.dataDecimal = new Uint32Array(
+			this.pt,
+			Int32Array.BYTES_PER_ELEMENT * 2 + Int32Array.BYTES_PER_ELEMENT * 2
+		);
 		this.size = size;
 	}
 	get wptr() {
@@ -24,20 +40,45 @@ export class SharedRingBuffer {
 	}
 	set rptr(val: number) {
 		Atomics.store(this.state, 1, val % this.size);
+		Atomics.notify(this.state, 1, 1);
+	}
+	get availableFrames() {
+		return this.wptr - this.rptr;
+	}
+	get meta() {
+		const [samplesPerSecond, info] = [
+			Atomics.load(this.audioCtxMeta, 0),
+			Atomics.load(this.audioCtxMeta, 1),
+		];
+		return {
+			samplesPerSecond,
+			bitsPerSample: info & 0x7fff,
+			numberOfChannels: info & 0x8000,
+		};
+	}
+	set meta({ numberOfChannels, bitsPerSample, samplesPerSecond }) {
+		Atomics.store(this.audioCtxMeta, 0, samplesPerSecond);
+		Atomics.store(
+			this.audioCtxMeta,
+			1,
+			(numberOfChannels << 7) | bitsPerSample
+		);
+	}
+	readAUblock(destination: any) {
+		const dest = destination || new Float32Array(this.blockSize / 4);
+		this.readToArray(dest);
+		return dest;
+	}
+	waitForDrain() {
+		return Atomics.wait(this.state, 1, this.rptr);
+	}
+
+	prealloc(length: number) {
+		return this.data.subarray(this.wptr, (this.wptr += length));
 	}
 	writeAB(vals: ArrayBuffer) {
-		const view = new Uint32Array(vals);
-		const len = view.byteLength / 4;
-		const dv = new DataView(vals);
-		const wptr = this.wptr;
-		for (let i = 0; i < len; i++) {
-			Atomics.store(
-				this.dataDecimal,
-				wptr + i,
-				dv.getUint32(i * 4, true)
-			);
-		}
-		this.wptr = wptr + len;
+		this.data.set(new Float32Array(vals), this.wptr);
+		this.wptr += vals.byteLength / 4;
 	}
 	read() {
 		if (this.wptr > this.rptr) {
@@ -54,6 +95,23 @@ export class SharedRingBuffer {
 			return output;
 		}
 	}
+	readToArray(arr: ArrayBuffer) {
+		const start = this.rptr;
+		const len = arr.byteLength / Float32Array.BYTES_PER_ELEMENT;
+
+		const dv = new DataView(this.data.buffer);
+		for (let i = 0; i < len; i++) {
+			arr[i] = dv.getFloat32(
+				(start + i) * Float32Array.BYTES_PER_ELEMENT,
+				true
+			);
+		}
+		this.rptr += len;
+	}
+	get blockSize() {
+		const { numberOfChannels, bitsPerSample, samplesPerSecond } = this.meta;
+		return (128 * numberOfChannels * bitsPerSample) / 4;
+	}
 	get writableAB() {
 		return new WritableStream<ArrayBuffer>({
 			write: (chunk: ArrayBuffer) => {
@@ -69,12 +127,14 @@ export class SharedRingBuffer {
 			},
 		});
 	}
-	get readable() {
-		return new ReadableStream<Float32Array>({
-			start: (controller) => {},
-			pull: (controller) => {
-				controller.enqueue(this.read());
-			},
-		});
-	}
+	// get readable() {
+	// 	return new ReadableStream<Float32Array>({
+	// 		start: (controller) => {,
+	// 		pull: (controller) => {
+	// 			const block = this.prealloc(this.blockSize);
+	// 			this.readToArray(block);
+	// 			controller.enqueue(block);
+	// 		},
+	// 	});
+	// }
 }
