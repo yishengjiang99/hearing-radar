@@ -5,28 +5,13 @@ import { SSRContext } from "./ssrctx";
 import { basename, resolve } from "path";
 import { Application, Request, Response, Router } from "express";
 import { ReadlineTransform, LSGraph, LSSource } from "grep-transform";
-import {
-	createReadStream,
-	createWriteStream,
-	exists,
-	existsSync,
-	readFileSync,
-} from "fs";
-import {
-	handleWsRequest,
-	WebSocketServer,
-	wscat,
-	WsServer,
-	WsSocket,
-} from "grep-wss";
-import { PassThrough } from "stream";
-import { wavHeader } from "./wav-header";
+import { existsSync, readFileSync } from "fs";
+
 let files = [
-	"synth/440/-ac2-f32le",
-	"synth/440/-ac2-s16le",
+	"synth/440/-ac2-f32le.wav",
+	"synth/440/-ac2-s16le.wav",
 	...execSync("ls samples/*wav").toString().trim().split(/\s+/),
 ];
-const uuid = () => process.hrtime().join("|");
 const express = require("express");
 export const router: Router = express.Router();
 router.use("*", (req, res, next) => {
@@ -57,15 +42,15 @@ router.get("/samples/:filename", (req, res) => {
 		res.writeHead(404);
 		return;
 	}
+
+	const ctx = SSRContext.fromWAVFile(filename);
 	res.writeHead(200, {
 		"Access-Control-Allow-Origin": "*",
 		"Content-Type": "audio/x-wav",
+		"x-sample-rate": ctx.sampleRate,
+		"x-bit-depth": ctx.bitDepth,
+		"x-n-channel": ctx.nChannels,
 	});
-	// createReadStream(filename).pipe(res);
-	// return;
-
-	const ctx = SSRContext.fromFileName(filename);
-	// res.write(Buffer.from(wavHeader(44100 * 2 * 30, 44100, 2)));
 	ctx.fps = 10;
 	ctx.connect(res);
 	const fsrc = new FileSource(ctx, {
@@ -73,25 +58,24 @@ router.get("/samples/:filename", (req, res) => {
 	});
 	fsrc.connect(ctx);
 	ctx.start();
-
 	res.on("close", () => ctx.stop());
 	req.socket.on("close", () => ctx.stop());
 });
 router.get("/synth/:freq/:desc.wav", (req, res) => {
 	res.writeHead(200, {
 		"Access-Control-Allow-Origin": "*",
-		"Content-Type": "audio/WAVE",
+		"Content-Type": "x-audio/WAVE",
 	});
 	const ctx = SSRContext.fromFileName(req.params.desc);
-	console.log(ctx.bitDepth, Buffer.from(ctx.WAVHeader).buffer);
 	const osc = new Oscillator(ctx, { frequency: parseFloat(req.params.freq) });
+	res.write(osc.header);
 	osc.connect(ctx);
 	ctx.connect(res);
 	ctx.on("end", () => {
 		res.end();
 	});
 	ctx.start();
-	ctx.stop(500);
+	ctx.stop(2);
 });
 router.get("/synth/:freq/:desc", (req, res) => {
 	res.writeHead(200, {
@@ -100,11 +84,14 @@ router.get("/synth/:freq/:desc", (req, res) => {
 		"Content-Disposition": "inline",
 	});
 	const ctx = SSRContext.fromFileName(req.params.desc);
-	console.log(ctx.bitDepth, Buffer.from(ctx.WAVHeader).buffer);
 	const osc = new Oscillator(ctx, { frequency: parseFloat(req.params.freq) });
 	osc.connect(ctx);
 	ctx.connect(res);
+	ctx.on("end", () => {
+		res.end();
+	});
 	ctx.start();
+	ctx.stop(2);
 });
 router.use("/app", express.static("../../public"));
 router.use((req: Request, res: Response) => {
@@ -127,7 +114,6 @@ router.use((req: Request, res: Response) => {
 					)
 					.join("")}
 			</div>
-			<audio controls src='synth/440/-ac2-f32le.wav'></audio>
 
 			<div id='stdout'></div>
 			<input type='file' value='sele'>input</input>
@@ -149,6 +135,7 @@ router.use((req: Request, res: Response) => {
 		res.end(resolve(__dirname, `../../public/${req.url}`));
 	}
 });
+
 if (require.main === module) {
 	const app: Application = express();
 	app.engine("tag", function (filename, options, callback) {
@@ -156,86 +143,8 @@ if (require.main === module) {
 	});
 	app.use("/node", router);
 	app.use("/", router);
-
-	const http = require("http").createServer(app);
-	http.listen(3000);
-	console.log(uuid());
-	handleWsRequest(http, (uri: string) => {
-		if (uri.match(/upload(.*?)/)) {
-			console.log("");
-			return (connection: WsSocket) => {
-				const wstr = createWriteStream("/tmp/" + uuid() + ".raw");
-				const SSRCtx = SSRContext.fromFileName(uri);
-				connection.write("ack");
-				wstr.write(new Uint8Array(SSRCtx.WAVHeader));
-				connection.on("data", (d) => {
-					console.log(d.byteLength);
-					wstr.write(d);
-				});
-			};
-		} else if (uri.match(/synth\/\(d\)/)) {
-			return (connection: WsSocket) => {
-				const m = uri.match(/synth\/\(d\)/);
-				const ctx = new SSRContext({
-					nChannels: 1,
-					sampleRate: 9000,
-					fps: 10,
-					bitDepth: 16,
-				});
-				const pt = new PassThrough();
-				const fsrc = new Oscillator(ctx, {
-					frequency: m[1],
-				});
-				fsrc.connect(ctx);
-				ctx.start();
-				ctx.connect(pt);
-				pt.on("data", (d) => connection.write(d));
-			};
-		} else if (uri.match(/pcm\/\(d\)/)) {
-			return (connection: WsSocket) => {
-				const ctx = new SSRContext({
-					nChannels: 1,
-					sampleRate: 9000,
-					fps: 10,
-					bitDepth: 16,
-				});
-				const pt = new PassThrough();
-				const fsrc = new FileSource(ctx, {
-					filePath: uri.replace("file:", ""),
-				});
-				fsrc.connect(ctx);
-				ctx.start();
-				ctx.connect(pt);
-			};
-		} else {
-			return () => {};
-		}
-	});
+	app.listen(3000);
+	setInterval(() => {
+		console.log(process.memoryUsage());
+	}, 2000);
 }
-
-// const p = spawn("ls", ["-R", "./db"]);
-// p.stdout.pipe(process.stdout);
-// p.on("error", console.error);
-
-// })
-
-// 		res.writeHead(200, {
-// 			"Access-Control-Allow-Origin": "*",
-// 			"Content-Type": "application/octet-stream",
-// 			"Content-Disposition": "inline",
-// 		});
-// 		const filename = req.url.replace("/file/", "");
-// 		const ctx = new SSRContext({
-// 			nChannels: 1,
-// 			sampleRate: 44100,
-// 			fps: 44100 / 128,
-// 			bitDepth: 16,
-// 		});
-// 		ctx.connect(res);
-// 		const fsrc = new FileSource(ctx, {
-// 			filePath: require("path").resolve(__dirname, "..", filename),
-// 		});
-// 		fsrc.connect(ctx);
-// 		ctx.start();
-// 	}
-// });

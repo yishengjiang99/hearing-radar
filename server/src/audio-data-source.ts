@@ -1,14 +1,20 @@
 import { SSRContext } from "./ssrctx";
-import { openSync, readSync, read, createReadStream } from "fs";
+import { openSync, readSync, read, createReadStream, closeSync } from "fs";
 import { Readable } from "stream";
 import { EventEmitter } from "events";
+import { start } from "repl";
 
 export interface AudioDataSource {
 	ctx: SSRContext;
 	active: boolean;
 	// new (ctx: SSRContext, opts: any): AudioDataSource;
-	pullFrame: () => Buffer;
+	pullFrame: () => Buffer | false;
 	connect: (destination: SSRContext) => boolean;
+	stop: () => void;
+}
+export interface ScheduledDataSource extends AudioDataSource {
+	start: (when?: number) => void;
+	stop: (when?: number) => void;
 }
 
 export class Oscillator implements AudioDataSource {
@@ -16,15 +22,25 @@ export class Oscillator implements AudioDataSource {
 	frequency: any;
 	active: boolean = true;
 	bytesPerSample: number;
-	constructor(ctx: SSRContext, { frequency }) {
+
+	constructor(
+		ctx: SSRContext,
+		{
+			frequency,
+		}: {
+			frequency: number;
+		}
+	) {
 		this.ctx = ctx;
 		this.frequency = frequency;
 		this.bytesPerSample = this.ctx.sampleArray.BYTES_PER_ELEMENT;
+		this.connect(ctx);
+	}
+	get header(): Buffer {
+		return Buffer.from(this.ctx.WAVHeader);
 	}
 	pullFrame(): Buffer {
-		if (this.ctx.frameNumber === 0) {
-			return Buffer.from(this.ctx.WAVHeader);
-		}
+		if (!this.active) return Buffer.alloc(0);
 		const frames = Buffer.allocUnsafe(this.ctx.blockSize);
 		const n = this.ctx.frameNumber;
 		const cyclePerSample =
@@ -37,9 +53,14 @@ export class Oscillator implements AudioDataSource {
 		}
 		return frames;
 	}
+	start() {
+		this.active = true;
+	}
+	stop() {
+		this.active = false;
+	}
 	connect(dest: SSRContext) {
 		dest.inputs.push(this);
-
 		return true;
 	}
 }
@@ -50,32 +71,81 @@ export class FileSource extends EventEmitter implements AudioDataSource {
 	ctx: SSRContext;
 	active: boolean = true;
 	output: Buffer;
-	rptr: number;
-	rs: import("fs").ReadStream;
+	wptr: number;
 
-	constructor(ctx: SSRContext, { filePath }) {
+	constructor(
+		ctx: SSRContext,
+		{
+			filePath,
+		}: {
+			filePath: string;
+		}
+	) {
 		super();
 		this.fd = openSync(filePath, "r");
 		this.ctx = ctx;
 		this.offset = 0;
-		this.output = Buffer.alloc(this.ctx.blockSize);
-
-		this.rs = createReadStream(filePath);
-		readSync(this.fd, this.output, 0, this.ctx.blockSize, this.offset);
-		this.offset += this.ctx.blockSize;
 	}
 
 	pullFrame(): Buffer {
-		const ob = Buffer.alloc(this.ctx.blockSize);
-		read(this.fd, ob, 0, ob.byteLength, this.offset, () => {
-			this.output = ob;
-		});
-		return this.output;
+		const ob = Buffer.allocUnsafe(this.ctx.blockSize);
+		readSync(this.fd, ob, 0, ob.byteLength, this.offset);
+		this.offset += ob.byteLength;
+		return ob;
 	}
 	connect(dest: SSRContext) {
 		dest.inputs.push(this);
 		return true;
 	}
+	stop() {
+		closeSync(this.fd);
+	}
+}
+
+export type BufferSourceProps = {
+	buffer: Buffer;
+	start?: number;
+	end?: number;
+};
+export class BufferSource extends Readable implements ScheduledDataSource {
+	_start: number;
+	_end: number;
+	ctx: SSRContext;
+	buffer: Buffer;
+	constructor(ctx: SSRContext, props: BufferSourceProps) {
+		super();
+		this.ctx = ctx;
+		this.buffer = props.buffer;
+		const { buffer, start, end } = props;
+		if (start) this._start = start;
+		if (end) this._end = end;
+		this.connect(ctx);
+	}
+	start(when?: number) {
+		this._start = when || this.ctx.currentTime;
+	}
+	stop(when?: number) {
+		this._end = when || this.ctx.currentTime;
+	}
+
+	get active(): boolean {
+		return (
+			this.ctx.currentTime < this._end &&
+			this.ctx.currentTime > this._start
+		);
+	}
+	pullFrame(): Buffer | false {
+		if (!this.active) return false;
+		const ret = this.buffer.slice(0, this.ctx.blockSize);
+		this.buffer = this.buffer.slice(this.ctx.blockSize);
+		console.log("pull", this.ctx.currentTime);
+		return ret;
+	}
+	connect(dest: SSRContext) {
+		dest.inputs.push(this);
+		return true;
+	}
+	dealloc() {}
 }
 
 ///#endregion
@@ -89,3 +159,13 @@ export class FileSource extends EventEmitter implements AudioDataSource {
 // const b = o.pullFrame();
 // console.log(b);
 //console.log(o.pullFrame());
+// export const sampleDir = (filename) =>
+// 	require("path").resolve(__dirname, "../testdata", filename);
+// debugger;
+// const ctx = new SSRContext();
+// const fd = openSync(sampleDir("440.pcm"), "r");
+// const buffer = Buffer.allocUnsafe(ctx.blockSize * 350);
+// readSync(fd, buffer, 0, ctx.blockSize * 350, 0);
+// closeSync(fd);
+// ctx.connect(process.stdout);
+// ctx.start();

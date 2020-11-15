@@ -1,3 +1,6 @@
+import { openSync, readFileSync, readSync } from "fs";
+import { SSRContext } from "./ssrctx";
+
 var writeString = function (view, offset, str) {
 	return str.split("").map(function (char, idx) {
 		view.setUint8(offset + idx, char.charCodeAt(0));
@@ -47,4 +50,19 @@ export const wavHeader = function (
 	// /* data chunk length */
 	view.setUint32(40, (samples.length * bitDepth) / 8, true);
 	return view.buffer;
+};
+export const readHeader = (path: string) => {
+	const fd = openSync(path, "r");
+	const ob = Buffer.alloc(48);
+	readSync(fd, ob, 0, 48, 0);
+	const view = new DataView(ob.buffer);
+	const [nChannels, sampleRate, _, __, bitDepth] = [
+		view.getUint16(22, true),
+		view.getUint32(24, true),
+		view.getUint32(28, true),
+		view.getUint32(32, true),
+		view.getUint16(34, true),
+	];
+
+	return new SSRContext({ nChannels, sampleRate, bitDepth });
 };

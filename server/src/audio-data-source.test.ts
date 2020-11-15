@@ -1,5 +1,9 @@
 import { expect } from "chai";
-import { FileSource } from "./audio-data-source";
+import { spawn } from "child_process";
+import { closeSync, openSync, readFileSync, readSync } from "fs";
+import { wscat } from "grep-wss";
+import { BufferSource, FileSource, Oscillator } from "./audio-data-source";
+import { RTServer } from "./rtmp";
 import { SSRContext } from "./ssrctx";
 
 const sampleDir = (filename) =>
@@ -14,12 +18,58 @@ describe("fileSource", () => {
 		const d = file.pullFrame();
 		expect(d).to.exist;
 		expect(d.byteLength).to.equal(ctx.blockSize);
-		ctx.stop(1);
-		ctx.on("end", (d) => {
-			expect(ctx.playing).be.false;
-			done();
-		});
-
+		const readFile = readFileSync(sampleDir("440.pcm"));
+		const buff = readFile.slice(0, ctx.blockSize);
+		expect(buff).deep.equal(d);
+		ctx.stop();
+		done();
 		//	expect(buffer.byteLength).to.equal(ctx.blockSize);
+	});
+});
+
+describe("playaudio", () => {
+	it("ssr must generate correct audio at 16bit signal", () => {
+		const ctx = new SSRContext({
+			bitDepth: 16,
+			sampleRate: 9000,
+			nChannels: 1,
+		});
+		const osc = new Oscillator(ctx, { frequency: 440 });
+		osc.start();
+		const buffer = osc.pullFrame();
+		expect(buffer.length).to.equal(ctx.blockSize);
+		expect(buffer.byteLength).to.equal(128 * 2);
+		ctx.start();
+		ctx.stop(0.5);
+	});
+});
+describe("scheduled buffere source", () => {
+	const ctx = new SSRContext();
+	const fd = openSync(sampleDir("440.pcm"), "r");
+	const buffer = Buffer.allocUnsafe(ctx.blockSize * 350);
+	readSync(fd, buffer, 0, ctx.blockSize * 350, 0);
+	closeSync(fd);
+	it("should play about 1 second", (done) => {
+		const node = new BufferSource(ctx, {
+			buffer: buffer,
+			start: 0.12,
+			end: 0.31,
+		});
+		expect(ctx.inputs.length).to.equal(1);
+		expect(node.active).false;
+		ctx.start();
+		expect(ctx.currentTime).to.equal(ctx.secondsPerFrame);
+		ctx.stop(0.4);
+		done();
+		// setTimeout(() => {
+		// 	expect(node.active).true;
+		// 	setTimeout(() => {
+		// 		expect(node.active).false;
+		// 		done();
+		// 	}, 130);
+		// }, 200);
+	});
+	afterEach(() => {
+		ctx.stop(0);
 	});
 });

@@ -1,21 +1,24 @@
 import { spawn } from "child_process";
+import { clear, time } from "console";
 import { EventEmitter } from "events";
 import { createWriteStream } from "fs";
-import { Writable } from "stream";
+import { PassThrough, Writable } from "stream";
 import { AudioDataSource, FileSource, Oscillator } from "./audio-data-source";
-import { wavHeader } from "./wav-header";
+import { wavHeader, readHeader } from "./wav-header";
+import { extname } from "path";
 const { write, read } = require("@xtuc/ieee754");
 type Time = [number, number];
-const timediff = (t1: Time, t2: Time) => {
-	return t1[0] - t2[0] + (t1[1] - t2[1]) / 0xffffffff;
+export const timediff = (t1: Time, t2: Time) => {
+	return t1[0] + t1[1] / 1e9 - (t2[0] + t2[1] / 1e9);
 };
 //#region
 export interface CtxProps {
 	nChannels?: number;
 	sampleRate?: number;
 	fps?: number;
-	bitDepth?: 32 | 16 | 8;
+	bitDepth?: number;
 }
+
 //#endregion
 export class SSRContext extends EventEmitter {
 	encoder: Encoder;
@@ -23,12 +26,14 @@ export class SSRContext extends EventEmitter {
 	playing: boolean;
 	sampleRate: number;
 	fps: number;
-	t0: Time;
 	lastFrame: Time;
 	output: Writable;
 	frameNumber: number;
 	inputs: AudioDataSource[] = [];
-	bitDepth: 32 | 16 | 8;
+	bitDepth: number;
+	static fromWAVFile = (path: string): SSRContext => {
+		return readHeader(path);
+	};
 	static fromFileName = (filename: string): SSRContext => {
 		console.log(filename, filename.includes("-f32le"));
 		const nChannels = filename.match(/\-ac(\d+)/)?.index || 2;
@@ -45,7 +50,6 @@ export class SSRContext extends EventEmitter {
 	static defaultProps: CtxProps = {
 		nChannels: 2,
 		sampleRate: 44100,
-		fps: 44100 / 128,
 		bitDepth: 16,
 	};
 	end: number;
@@ -58,10 +62,11 @@ export class SSRContext extends EventEmitter {
 		};
 		this.nChannels = nChannels;
 		this.sampleRate = sampleRate;
-		this.fps = fps;
+		this.fps = sampleRate / 128;
 		this.frameNumber = 0;
 		this.bitDepth = bitDepth;
 		this.encoder = new Encoder(this.bitDepth);
+		this.playing = true;
 	}
 	get secondsPerFrame() {
 		return 1 / this.fps;
@@ -89,7 +94,7 @@ export class SSRContext extends EventEmitter {
 			case 32:
 				return Uint32Array;
 			case 16:
-				return Uint16Array;
+				return Int16Array;
 			case 8:
 				return Uint8Array;
 			default:
@@ -97,79 +102,70 @@ export class SSRContext extends EventEmitter {
 		}
 	}
 	pump(): boolean {
+		this.lastFrame = process.hrtime();
 		let ok = true;
-		if (!this.output) return false;
+		this.frameNumber++;
 		for (let i = 0; i < this.inputSources.length; i++) {
 			const b = this.inputSources[i].pullFrame();
-			const good = this.output.write(b);
+			this.emit("data", b);
+			if (this.output) this.output.write(b);
 		}
-
 		return ok;
 	}
 	get blockSize() {
 		return this.samplesPerFrame * this.sampleArray.BYTES_PER_ELEMENT;
 	}
 	get currentTime() {
-		return timediff(process.hrtime(), this.t0);
+		return this.frameNumber * this.secondsPerFrame;
 	}
 	connect(destination: Writable) {
 		this.output = destination;
-		this.start();
+		this.output.on("stop", () => {
+			this.stop(0);
+		});
 	}
 	start = () => {
-		console.log("starting", this.bitDepth, this.blockSize);
-
-		this.t0 = process.hrtime();
 		this.playing = true;
 		if (this.output === null) return;
 		let that = this;
-		let ok = true;
-		function loop() {
-			if (that.playing === false) return;
-			const diff = timediff(process.hrtime(), that.lastFrame);
-			if (diff >= that.secondsPerFrame) {
-				that.lastFrame = process.hrtime();
-				ok = that.pump();
-				that.frameNumber++;
-				if (that.end && that.currentTime >= that.end) that.stop(0);
-				if (that.frameNumber) setImmediate(loop);
-			} else {
-				setImmediate(loop);
-			}
-		}
-		this.lastFrame = process.hrtime();
-		this.pump();
 
-		setImmediate(loop);
+		let timer = setInterval(() => {
+			that.pump();
+			if (!that.playing || (that.end && that.currentTime >= that.end)) {
+				that.stop(0);
+				clearInterval(timer);
+			}
+		}, this.secondsPerFrame);
 	};
 	getRms() {}
 
-	stop(ms?: number) {
-		if (ms === 0) {
+	stop(second?: number) {
+		if (second === 0) {
 			this.playing = false;
 			this.emit("end");
+			this.inputs.forEach((input) => input.stop());
 		} else {
-			this.end = ms;
+			this.end = second;
 		}
 	}
 }
 export class Encoder {
 	bitDepth: number;
-	constructor(bitDepth: 32 | 16 | 8) {
+	constructor(bitDepth: number) {
 		this.bitDepth = bitDepth;
 	}
 	encode(buffer: Buffer, value: number, index: number): void {
 		let f = value;
+		const dv = new DataView(buffer.buffer);
 		switch (this.bitDepth) {
 			case 32:
 				write(buffer, value, index * 4, 23, 4);
 				break;
 			case 16:
-				value = Math.max(Math.max(-1, value), 1);
-				buffer.writeUInt16LE(
-					value > 0 ? value * 0x7fff : 0x10000 - value * 0x8000,
-					index * Uint16Array.BYTES_PER_ELEMENT
-				);
+				value = Math.min(Math.max(-1, value), 1);
+				value < 0
+					? dv.setInt16(index * 2, value * 0x8000, true)
+					: dv.setInt16(index * 2, value * 0x7fff, true);
 				break;
 			case 8:
 				buffer.writeUInt8(value, index * Uint8Array.BYTES_PER_ELEMENT);
@@ -179,7 +175,21 @@ export class Encoder {
 		}
 	}
 }
+// const ctx = new SSRContext({
+// 	nChannels: 2,
+// 	bitDepth: 16,
+// 	sampleRate: 9000,
+// });
 
+// ctx.stop(0.1);
+// ctx.start();
+// const t = setInterval(() => {
+// 	process.stdout.write("*");
+// 	if (ctx.playing === false) {
+// 		console.log(process.uptime());
+// 		clearInterval(t);
+// 	}
+// }, 10);
 // fss.connect(ctx);
 // ctx.start();
 
@@ -193,3 +203,32 @@ export class Encoder {
 // 	},
 // 	port: 5150,
 // });
+// const ctx = new SSRContext({
+// 	nChannels: 2,
+// 	bitDepth: 16,
+// 	sampleRate: 44100,
+// });
+
+// ctx.stop(0.01);
+// ctx.start();
+// let tick = process.hrtime();
+// const nc = () => timediff(process.hrtime(), tick);
+// setTimeout(() => {
+// 	console.log(nc(), ctx.currentTime);
+// 	setTimeout(() => {
+// 		console.log(nc(), ctx.currentTime);
+// 		setTimeout(() => {
+// 			console.log(nc(), ctx.currentTime);
+// 			setTimeout(() => {
+// 				console.log(nc(), ctx.currentTime);
+// 			}, 100);
+// 		}, 100);
+// 	}, 100);
+// }, 100);
+// let t0 = process.hrtime();
+// function loop() {
+// 	console.log(timediff(process.hrtime(), t0));
+// 	t0 = process.hrtime();
+// 	process.nextTick(loop);
+// }
+// loop();
