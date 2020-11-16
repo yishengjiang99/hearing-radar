@@ -3,7 +3,6 @@ import { spawn } from "child_process";
 import { closeSync, openSync, readFileSync, readSync } from "fs";
 import { wscat } from "grep-wss";
 import { BufferSource, FileSource, Oscillator } from "./audio-data-source";
-import { RTServer } from "./rtmp";
 import { SSRContext } from "./ssrctx";
 
 const sampleDir = (filename) =>
@@ -57,17 +56,14 @@ describe("scheduled buffere source", () => {
 		});
 		expect(ctx.inputs.length).to.equal(1);
 		expect(node.active).false;
+		setTimeout(() => {
+			expect(node.active).true;
+			setTimeout(() => {
+				expect(node.active).false;
+				done();
+			}, 330);
+		}, 123);
 		ctx.start();
-		expect(ctx.currentTime).to.equal(ctx.secondsPerFrame);
-		ctx.stop(0.4);
-		done();
-		// setTimeout(() => {
-		// 	expect(node.active).true;
-		// 	setTimeout(() => {
-		// 		expect(node.active).false;
-		// 		done();
-		// 	}, 130);
-		// }, 200);
 	});
 	afterEach(() => {
 		ctx.stop(0);

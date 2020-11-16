@@ -29,9 +29,12 @@ export const cspawnToBuffer = async (cmd: string, str: string, ob: Buffer) => {
 		const { stdout, stderr } = spawn(cmd, str.split(" "));
 		let offset = 0;
 		stdout.on("data", (chunk) => {
-			ob.set(chunk, (offset += chunk.byteLength));
-			if (offset > ob.byteLength) {
-				reject(new Error("buffer overrflow"));
+			if (offset + chunk.byteLength > ob.byteLength) {
+				console.trace();
+				console.log(offset, chunk.byteLength, ob.byteLength);
+			} else {
+				ob.set(chunk, offset);
+				offset += chunk.byteLength;
 			}
 		});
 		stdout.on("error", reject);
@@ -67,18 +70,9 @@ export const combinemp3 = async (
 	return ob;
 };
 
-export const spawnInputBuffer = (proc: ChildProcess, buffer: Buffer) => {
+export const spawnInputBuffer = (proc: ChildProcess, buffer?: Buffer) => {
 	proc.on("error", console.error);
 	const pt = new PassThrough();
 	pt.pipe(proc.stdin);
 	pt.write(buffer);
-	//    proc.stdin.write(buffer);
 };
-
-// spawnToBuffer(spawn("ls")).then(buffer=>{
-//    // console.log(buffer.toString());
-// }).catch(console.error);
-
-// spawnToBuffer(spawn("ffmpeg",'-i 8.mp3 -f WAV -'.split(' '))).then(buffer=>{
-//     console.log(buffer.toString());
-// }).catch(console.error);

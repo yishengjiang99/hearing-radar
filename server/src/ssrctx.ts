@@ -35,9 +35,8 @@ export class SSRContext extends EventEmitter {
 		return readHeader(path);
 	};
 	static fromFileName = (filename: string): SSRContext => {
-		console.log(filename, filename.includes("-f32le"));
 		const nChannels = filename.match(/\-ac(\d+)/)?.index || 2;
-		const sampleRate = 44100; // ? filename.match(/\-ar(\d+)/).index
+		const sampleRate = filename.match(/\-ar(\d+)/)?.index || 44100;
 		const bitDepth = filename.includes("-f32le") ? 32 : 16;
 		return new SSRContext({
 			sampleRate,
@@ -117,6 +116,13 @@ export class SSRContext extends EventEmitter {
 	}
 	get currentTime() {
 		return this.frameNumber * this.secondsPerFrame;
+	}
+	get bytesPerSecond() {
+		return (
+			this.sampleRate *
+			this.nChannels *
+			this.sampleArray.BYTES_PER_ELEMENT
+		);
 	}
 	connect(destination: Writable) {
 		this.output = destination;

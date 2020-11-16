@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { cacheStore } from "./flat-cache-store";
+import { CacheStore } from "./flat-cache-store";
 // console.log(test);
 // test("cache store", function(t){
 //     console.log(t);
@@ -16,8 +16,14 @@ import { cacheStore } from "./flat-cache-store";
 // });
 describe("cache store", () => {
 	it("instantiates with buffer size, and size of eleemnt", () => {
+		const cache = new CacheStore(100, 3);
+		expect(cache.length).eq(0);
+		cache.malloc("1");
+		expect(cache.length).eq(1);
+	});
+	it("instantiates with buffer size, and size of eleemnt", () => {
 		const before = process.memoryUsage();
-		const cache = cacheStore(100, 3);
+		const cache = new CacheStore(100, 3);
 		const after = process.memoryUsage();
 		console.log(after.heapUsed - before.heapUsed);
 		expect(after.heapUsed - before.heapUsed).greaterThan(0);

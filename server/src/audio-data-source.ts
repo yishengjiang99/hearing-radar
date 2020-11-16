@@ -103,23 +103,33 @@ export class FileSource extends EventEmitter implements AudioDataSource {
 }
 
 export type BufferSourceProps = {
-	buffer: Buffer;
-	start?: number;
-	end?: number;
+	buffer?: Buffer;
+	loadBuffer?: () => Promise<Buffer>;
+	start: number;
+	end: number;
 };
 export class BufferSource extends Readable implements ScheduledDataSource {
 	_start: number;
 	_end: number;
+	_loadBuffer: () => Promise<Buffer>;
 	ctx: SSRContext;
 	buffer: Buffer;
 	constructor(ctx: SSRContext, props: BufferSourceProps) {
 		super();
 		this.ctx = ctx;
 		this.buffer = props.buffer;
-		const { buffer, start, end } = props;
+		const { loadBuffer, start, end } = props;
 		if (start) this._start = start;
 		if (end) this._end = end;
+		this._loadBuffer = loadBuffer;
 		this.connect(ctx);
+	}
+	async load() {
+		if (this.buffer) return;
+
+		if (this._loadBuffer) {
+			this._loadBuffer().then((b) => (this.buffer = b));
+		}
 	}
 	start(when?: number) {
 		this._start = when || this.ctx.currentTime;
