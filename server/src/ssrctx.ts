@@ -3,10 +3,16 @@ import { clear, time } from "console";
 import { EventEmitter } from "events";
 import { createWriteStream } from "fs";
 import { PassThrough, Writable } from "stream";
-import { AudioDataSource, FileSource, Oscillator } from "./audio-data-source";
+import {
+	AudioDataSource,
+	FileSource,
+	Oscillator,
+	ScheduledDataSource,
+} from "./audio-data-source";
 import { wavHeader, readHeader } from "./wav-header";
 import { extname } from "path";
-const { write, read } = require("@xtuc/ieee754");
+import { write, read as readFloat } from "@xtuc/ieee754";
+import { Decoder, Encoder, decode16, decode32 } from "./Kodak";
 type Time = [number, number];
 export const timediff = (t1: Time, t2: Time) => {
 	return t1[0] + t1[1] / 1e9 - (t2[0] + t2[1] / 1e9);
@@ -35,14 +41,19 @@ export class SSRContext extends EventEmitter {
 		return readHeader(path);
 	};
 	static fromFileName = (filename: string): SSRContext => {
-		const nChannels = filename.match(/\-ac(\d+)/)?.index || 2;
-		const sampleRate = filename.match(/\-ar(\d+)/)?.index || 44100;
-		const bitDepth = filename.includes("-f32le") ? 32 : 16;
+		const nChannels = filename.match(/\-ac(\d+)\-/)
+			? parseInt(filename.match(/\-ac(\d+)\-/)[1])
+			: 2;
+		const sampleRate =
+			(filename.match(/\-ar(\d+)\-/) &&
+				parseInt(filename.match(/\-ar(\d+)\-/)[1])) ||
+			44100;
+		const bitDepth = filename.includes("f32le") ? 32 : 16;
 		return new SSRContext({
-			sampleRate,
-			nChannels,
-			bitDepth,
+			sampleRate: sampleRate,
+			nChannels: nChannels,
 			fps: sampleRate / 128 / 50,
+			bitDepth,
 		});
 	};
 
@@ -52,6 +63,7 @@ export class SSRContext extends EventEmitter {
 		bitDepth: 16,
 	};
 	end: number;
+	decoder: Decoder;
 
 	constructor(props: CtxProps = SSRContext.defaultProps) {
 		super();
@@ -65,6 +77,7 @@ export class SSRContext extends EventEmitter {
 		this.frameNumber = 0;
 		this.bitDepth = bitDepth;
 		this.encoder = new Encoder(this.bitDepth);
+		this.decoder = new Decoder(this.bitDepth);
 		this.playing = true;
 	}
 	get secondsPerFrame() {
@@ -104,12 +117,28 @@ export class SSRContext extends EventEmitter {
 		this.lastFrame = process.hrtime();
 		let ok = true;
 		this.frameNumber++;
+		// const sum = new this.sampleArray(this.blockSize).fill(0);
+		// const activeInput = this.inputSources.length;
 		for (let i = 0; i < this.inputSources.length; i++) {
 			const b = this.inputSources[i].pullFrame();
-			this.emit("data", b);
-			if (this.output) this.output.write(b);
+			this.output.write(b);
+			break;
 		}
 		return ok;
+	}
+	prepareUpcoming() {
+		let newInputs = [];
+		const t = this.currentTime;
+		for (let i = 0; i < this.inputs.length; i++) {
+			if (this.inputs[i].ended() === false) {
+				newInputs.push(this.inputs[i]);
+				// this.inputs[i]?.prepare(t);
+			}
+		}
+		this.inputs = newInputs;
+		if (this.inputs.length === 0) {
+			this.stop(0);
+		}
 	}
 	get blockSize() {
 		return this.samplesPerFrame * this.sampleArray.BYTES_PER_ELEMENT;
@@ -134,6 +163,7 @@ export class SSRContext extends EventEmitter {
 		this.playing = true;
 		if (this.output === null) return;
 		let that = this;
+		this.output.write(Buffer.from(this.WAVHeader));
 
 		let timer = setInterval(() => {
 			that.pump();
@@ -141,6 +171,7 @@ export class SSRContext extends EventEmitter {
 				that.stop(0);
 				clearInterval(timer);
 			}
+			this.prepareUpcoming();
 		}, this.secondsPerFrame);
 	};
 	getRms() {}
@@ -148,93 +179,15 @@ export class SSRContext extends EventEmitter {
 	stop(second?: number) {
 		if (second === 0) {
 			this.playing = false;
-			this.emit("end");
+			this.emit("finish");
 			this.inputs.forEach((input) => input.stop());
 		} else {
 			this.end = second;
 		}
 	}
-}
-export class Encoder {
-	bitDepth: number;
-	constructor(bitDepth: number) {
-		this.bitDepth = bitDepth;
-	}
-	encode(buffer: Buffer, value: number, index: number): void {
-		let f = value;
-		const dv = new DataView(buffer.buffer);
-		switch (this.bitDepth) {
-			case 32:
-				write(buffer, value, index * 4, 23, 4);
-				break;
-			case 16:
-				value = Math.min(Math.max(-1, value), 1);
-				value < 0
-					? dv.setInt16(index * 2, value * 0x8000, true)
-					: dv.setInt16(index * 2, value * 0x7fff, true);
-				break;
-			case 8:
-				buffer.writeUInt8(value, index * Uint8Array.BYTES_PER_ELEMENT);
-				break;
-			default:
-				throw new Error("unsupported bitdepth");
+	run() {
+		while (true) {
+			this.pump();
 		}
 	}
 }
-// const ctx = new SSRContext({
-// 	nChannels: 2,
-// 	bitDepth: 16,
-// 	sampleRate: 9000,
-// });
-
-// ctx.stop(0.1);
-// ctx.start();
-// const t = setInterval(() => {
-// 	process.stdout.write("*");
-// 	if (ctx.playing === false) {
-// 		console.log(process.uptime());
-// 		clearInterval(t);
-// 	}
-// }, 10);
-// fss.connect(ctx);
-// ctx.start();
-
-// require("grep-wss").WebSocketServer({
-// 	onConnection: (reply) => {
-// 		console.log("gg");
-// 	},
-// 	onData: (data, ws) => {
-// 		ctx.connect(ws.socket);
-// 		ctx.start();
-// 	},
-// 	port: 5150,
-// });
-// const ctx = new SSRContext({
-// 	nChannels: 2,
-// 	bitDepth: 16,
-// 	sampleRate: 44100,
-// });
-
-// ctx.stop(0.01);
-// ctx.start();
-// let tick = process.hrtime();
-// const nc = () => timediff(process.hrtime(), tick);
-// setTimeout(() => {
-// 	console.log(nc(), ctx.currentTime);
-// 	setTimeout(() => {
-// 		console.log(nc(), ctx.currentTime);
-// 		setTimeout(() => {
-// 			console.log(nc(), ctx.currentTime);
-// 			setTimeout(() => {
-// 				console.log(nc(), ctx.currentTime);
-// 			}, 100);
-// 		}, 100);
-// 	}, 100);
-// }, 100);
-// let t0 = process.hrtime();
-// function loop() {
-// 	console.log(timediff(process.hrtime(), t0));
-// 	t0 = process.hrtime();
-// 	process.nextTick(loop);
-// }
-// loop();

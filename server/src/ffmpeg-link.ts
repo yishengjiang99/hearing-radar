@@ -3,6 +3,7 @@ import { PassThrough, Writable } from "stream";
 import { Buffer } from "buffer";
 import { unlinkSync } from "fs";
 import { resolve } from "path";
+import { CacheStore } from "./flat-cache-store";
 export type CastFunction = () => Writable;
 export const pcm_note_size = 76216696 / 88;
 export const castInput: CastFunction = () => {
@@ -49,24 +50,33 @@ export function ffmpegToBuffer(args: string, ob: Buffer) {
 export const mp3db = (inst: string, midi: number) =>
 	resolve(__dirname, "../db/", inst, `${midi}.mp3`);
 
+export type CombinedNotes = {
+	start: number;
+	midis: MidiNote[];
+	buffer?: Buffer;
+};
 export const combinemp3 = async (
-	notes: MidiNote[],
-	_inst: string
+	combinedNote: CombinedNotes,
+	noteCache: CacheStore,
+	format: string,
+	aoptions: string
 ): Promise<Buffer | undefined> => {
-	const key = `${notes.map((n) => `${n.instrument}${n.midi}_`)}.pcm`;
-	if (PCMCache.has(key)) return PCMCache.get(key);
+	const cacheKey = combinedNote.midis
+		.map((note) => `${note.instrument}${note.midi}`)
+		.join("_");
 
-	const inputs = notes.map(
-		(note) => `-i ${mp3db(note.instrument, note.midi)}`
-	);
-	const filterStr = `-filter_complex amix=inputs=${notes.length}:duration=shortest`;
-	const ob = Buffer.allocUnsafe(pcm_note_size);
-	await cspawnToBuffer(
-		"ffmpeg",
-		`-y ${inputs.join(" ")} ${filterStr} -ac 2 -f f32le ${key}`,
-		ob
-	);
-	PCMCache.set(key, ob);
+	if (noteCache.cacheKeys.includes(cacheKey)) {
+		return noteCache.read(cacheKey);
+	}
+
+	const inputStr = combinedNote.midis
+		.map((note) => `-i db/Fatboy_${note.instrument}/${note.midi}.mp3`)
+		.join(" ");
+	const filterStr = `-filter_complex amix=inputs=${combinedNote.midis.length}`;
+	const ob = noteCache.malloc(cacheKey);
+	const cmd = `-y -hide_banner -loglevel panic ${inputStr} ${filterStr} -t 2 -f ${format} ${aoptions} pipe:1`;
+	await cspawnToBuffer("ffmpeg", cmd, ob);
+
 	return ob;
 };
 

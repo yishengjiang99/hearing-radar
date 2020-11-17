@@ -30,25 +30,9 @@ export const ABTransform: () => TransformStream<
 };
 
 export const ReadWaveHeader = (view: DataView) => {
-	const [
-		numberOfChannels,
-		samplesPerSecond,
-		bytesPerSecond,
-		bytesPerSample,
-		bitsPerSample,
-	] = [
-		view.getUint16(22, true),
-		view.getUint32(24, true),
-		view.getUint32(28, true),
-		view.getUint32(32, true),
-		view.getUint16(34, true),
-	];
-	const headerInfo = {
-		numberOfChannels,
-		samplesPerSecond,
-		bytesPerSecond,
-		bytesPerSample,
-		bitsPerSample,
+	return {
+		numberOfChannels: view.getUint16(22, true),
+		sampleRate: view.getUint32(24, true),
+		bitsPerSample: view.getUint16(34, true),
 	};
-	return headerInfo;
 };

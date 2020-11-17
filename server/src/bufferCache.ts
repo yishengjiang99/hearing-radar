@@ -1,24 +1,13 @@
-import { createWriteStream, readFileSync, writeFileSync } from "fs";
-import { errorMonitor } from "stream";
-
 export class CacheStore {
 	cache: Buffer;
 	cacheKeys: string[];
 	n: number;
 	objectbyteLength: number;
-	rfd: string;
 	constructor(size: number, objectbyteLength: number, file?: string) {
 		this.cache = Buffer.alloc(objectbyteLength * size);
 		this.cacheKeys = Array(size).fill("");
 		this.n = 0;
 		this.objectbyteLength = objectbyteLength;
-		if (this.rfd) {
-			this.cacheKeys = readFileSync(file + ".cache.keys")
-				.toString()
-				.split("|");
-			this.cache = readFileSync(file + ".cache.pcm");
-		}
-		this.rfd = file;
 	}
 	set(key: string, value: Buffer) {
 		this.cacheKeys[this.n] = key;
@@ -47,10 +36,6 @@ export class CacheStore {
 	}
 	get length() {
 		return this.n;
-	}
-	persist() {
-		writeFileSync(this.rfd + ".cache.pcm", this.cache);
-		writeFileSync(this.rfd + ".cache.keys", this.cacheKeys.join("|"));
 	}
 }
 export function cacheStore(size: number, objectByteLength: number): CacheStore {

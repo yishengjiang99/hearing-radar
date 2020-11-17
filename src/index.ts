@@ -1,16 +1,5 @@
 import { templateUI } from "./templateUI";
-
-let state = {
-	ctx: null,
-	worker: null,
-	stats: {
-		rms: 0,
-		buffered: 0,
-		loss: 0,
-	},
-};
 const { stdout, rx1Div, postRx1, postRx2, cp, appendNOde } = templateUI();
-
 export const initworker = async () => {
 	const ctx = new AudioContext({
 		sampleRate: 48000,
@@ -41,7 +30,6 @@ export const initworker = async () => {
 		worker,
 	};
 };
-
 initworker().then(({ ctx, node, worker }) => {
 	worker.onmessage = ({ data: { msg, stats, pstats, event } }) => {
 		if (msg) {

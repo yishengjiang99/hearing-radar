@@ -6,6 +6,7 @@ import { basename, resolve } from "path";
 import { Application, Request, Response, Router } from "express";
 import { ReadlineTransform, LSGraph, LSSource } from "grep-transform";
 import { existsSync, readFileSync } from "fs";
+import { IncomingMessage } from "http";
 
 let files = [
 	"synth/440/-ac2-f32le.wav",
@@ -36,6 +37,19 @@ router.get("/r", (req, res: Response) => {
 		})
 		.on("end", () => res.end());
 });
+export function U32toF32(i) {
+	if (i === 0) return 0;
+	let r = i & ((1 << 23) - 1);
+	1;
+	r /= 1 << 23;
+	r += 1.0;
+	const bias = 127;
+	let shift = ((i >> 23) & 0xff) - bias;
+	for (; shift > 0; shift--) r *= 2;
+	for (; shift < 0; shift++) r /= 2;
+	return r;
+}
+
 router.get("/samples/:filename", (req, res) => {
 	const filename = resolve(__dirname, "../samples/", req.params.filename);
 	if (!existsSync(filename)) {
@@ -77,6 +91,10 @@ router.get("/synth/:freq/:desc.wav", (req, res) => {
 	ctx.start();
 	ctx.stop(2);
 });
+router.get("/db/:dir/:file", (req, res) => {
+	const path = resolve("db", req.params.dir, req.params.file); //, req.url.search["path"]);
+	res.end(path);
+});
 router.get("/synth/:freq/:desc", (req, res) => {
 	res.writeHead(200, {
 		"Access-Control-Allow-Origin": "*",
@@ -93,11 +111,9 @@ router.get("/synth/:freq/:desc", (req, res) => {
 	ctx.start();
 	ctx.stop(2);
 });
-router.use("/app", express.static("../../public"));
-router.use((req: Request, res: Response) => {
+router.use("/", (req: Request, res: Response) => {
 	const fpath = resolve(__dirname, `../../public/${req.url}`);
-	if (req.url === "/") {
-		res.end(`
+	res.end(`
 		<html>
 		<head>
 		<style>${readFileSync("../public/style.css")}</style>
@@ -128,12 +144,6 @@ router.use((req: Request, res: Response) => {
 		</body>
 		</html>
 		`);
-	} else if (existsSync(fpath)) {
-		res.contentType(require("mime").lookup(basename(fpath)));
-		res.sendFile(fpath);
-	} else {
-		res.end(resolve(__dirname, `../../public/${req.url}`));
-	}
 });
 
 if (require.main === module) {

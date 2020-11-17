@@ -18,8 +18,8 @@ export const wavHeader = function (
 	numChannels = 2,
 	bitDepth = 16
 ) {
-	var sampleRate = 44100;
-	var numChannels = 2;
+	var sampleRate = sampleRate;
+	var numChannels = numChannels;
 	var samples = length;
 	var buffer = new ArrayBuffer(48);
 	var view = new DataView(buffer);
