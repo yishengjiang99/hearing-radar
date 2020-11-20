@@ -57,14 +57,13 @@ Fifo *fetch_url(int fd, char *url, Fifo *fifo)
     }
     while (1)
     {
-        uint8_t *buffer = fifo_prelloc(fifo, 1024);
+        uint8_t *buffer = malloc(1024);
         int n = read(fd, buffer, 1024);
         if (n == EOF)
         {
             perror("done");
             break;
         }
-        commit_prelloc(fifo);
         if (fifo_size(fifo) > 1024 * 10)
         {
             write(fd, high_water, sizeof(high_water));
@@ -78,14 +77,14 @@ Fifo *fetch_url(int fd, char *url, Fifo *fifo)
     return fifo;
 }
 
-// int main(int argc, char *argv[])
-// {
+int main(int argc, char *argv[])
+{
 
-//     int fd = fetch_connect(argv[1], atoi(argv[2]));
-//     pthread_t *thread = malloc(sizeof(pthread_t));
+    int fd = fetch_connect(argv[1], atoi(argv[2]));
+    pthread_t *thread = malloc(sizeof(pthread_t));
 
-//     Fifo *fifo = fifo_malloc();
-//     fifo_init(fifo, 1024 << 4);
-//     char *str = "/synth/440/f32le-synth.wav";
-//     fetchURL(fd, str, fifo);
-// }
+    Fifo *fifo = fifo_malloc();
+    fifo_init(fifo, 1024 << 4);
+    char *str = "/synth/440/f32le-synth.wav";
+    fetchURL(fd, str, fifo);
+}
