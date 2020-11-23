@@ -1,4 +1,4 @@
-import { createWriteStream, readFileSync, writeFileSync } from "fs";
+import { createWriteStream, existsSync, readFileSync, writeFileSync } from "fs";
 import { errorMonitor } from "stream";
 
 export class CacheStore {
@@ -11,10 +11,10 @@ export class CacheStore {
     this.cache = Buffer.alloc(objectbyteLength * size);
     this.cacheKeys = Array(size).fill("");
     this.n = 0;
-    this.objectbyteLength = objectbyteLength;
-    if (file) {
-      this.rfd = file;
+    this.rfd = file;
 
+    this.objectbyteLength = objectbyteLength;
+    if (file && existsSync(file + ".cache.keys")) {
       this.cacheKeys = readFileSync(file + ".cache.keys")
         .toString()
         .split("|");

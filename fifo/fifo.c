@@ -74,9 +74,9 @@ int fifo_size(Fifo *f)
     }
 }
 
-int estmain()
+int test()
 {
-    printf("hello %lu", sizeof(Fifo));
+    //printf("hello %lu", sizeof(Fifo));
 
     Fifo *f = malloc(sizeof(Fifo));
     fifo_init(f, 1000);
@@ -86,7 +86,7 @@ int estmain()
     fifo_read(f, ob, 7);
     for (int i = 0; i < 7; i++)
     {
-        printf("%4x", ob[i]);
+        //printf("%4x", ob[i]);
     }
     return 0;
 }

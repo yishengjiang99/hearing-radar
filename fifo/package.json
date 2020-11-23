@@ -1,47 +1,46 @@
 {
-	"name": "grep-fifo",
-	"version": "1.0.3",
-	"description": "ES6 compliant and (typescript friendly) implementation of circular fifo in c. ",
-	"main": "fifo.wasmodule.js",
-	"scripts": {
-		"build": "emcc --bind -O1 -s WASM=1 -s BINARYEN_ASYNC_COMPILATION=0 -s SINGLE_FILE=1 fifo.c -s EXPORTED_FUNCTIONS=\"[_fifo_init, _fifo_read, _fifo_write, _fifo_size]\" -o fifo.wasmodule.ts --post-js ./es6.js",
-		"test": "mocha -t test/**/*",
+  "name": "grep-fifo",
+  "version": "1.0.4",
+  "description": "ES6 compliant and (typescript friendly) implementation of circular fifo in c. ",
+  "main": "fifo.wasmodule.js",
+  "scripts": {
+    "build": "emcc --bind -O1 -s WASM=1 -s BINARYEN_ASYNC_COMPILATION=0 -s SINGLE_FILE=1 fifo.c -s EXPORTED_FUNCTIONS=\"[_fifo_init, _fifo_read, _fifo_write, _fifo_size]\" -o fifo.wasmodule.ts --post-js ./es6.js",
+    "test": "mocha -t test/**/*",
     "rbuild": "scp fifo.c AzureUser@grepawk.com:/tmp/fifo.c; ssh AzureUser@grepawk.com -c 'sh /home/AzureUser/wasm/emccrun.sh fifo.c'; scp /home/AzureUser/fifo.c.wasmmodule.js ."
-
-	},
-	"keywords": [
-		"pain in the arse",
-		"allegedly faster than javascript"
-	],
-	"author": "grepawk",
-	"license": "ISC",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/yishengjiang99/hearing-radar.git"
-	},
-	"bugs": {
-		"url": "https://github.com/yishengjiang99/hearing-radar/issues"
-	},
-	"homepage": "https://github.com/yishengjiang99/hearing-radar#readme",
-	"devDependencies": {
-		"mocha": "^8.2.1"
-	},
-	"mocha": {
-		"package": "./package.json",
-		"extension": [
-			"ts"
-		],
-		"spec": [
-			"src/**/*.test.ts"
-		],
-		"recursive": true,
-		"require": [
-			"ts-node/register",
-			"./mocha.js"
-		]
-	},
-	"dependencies": {
-		"ts-node": "^9.0.0",
-		"webassembly": "^0.11.0"
-	}
+  },
+  "keywords": [
+    "pain in the arse",
+    "allegedly faster than javascript"
+  ],
+  "author": "grepawk",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yishengjiang99/hearing-radar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yishengjiang99/hearing-radar/issues"
+  },
+  "homepage": "https://github.com/yishengjiang99/hearing-radar#readme",
+  "devDependencies": {
+    "mocha": "^8.2.1"
+  },
+  "mocha": {
+    "package": "./package.json",
+    "extension": [
+      "ts"
+    ],
+    "spec": [
+      "src/**/*.test.ts"
+    ],
+    "recursive": true,
+    "require": [
+      "ts-node/register",
+      "./mocha.js"
+    ]
+  },
+  "dependencies": {
+    "ts-node": "^9.0.0",
+    "webassembly": "^0.11.0"
+  }
 }

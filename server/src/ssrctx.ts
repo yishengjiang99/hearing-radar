@@ -99,12 +99,9 @@ export class SSRContext extends EventEmitter {
     this.lastFrame = process.hrtime();
     let ok = true;
     this.frameNumber++;
-    // const sum = new this.sampleArray(this.blockSize).fill(0);
-    // const activeInput = this.inputSources.length;
     for (let i = 0; i < this.inputSources.length; i++) {
       const b = this.inputSources[i].pullFrame();
-      this.output.write(b);
-      break;
+      b && this.emit("data", b);
     }
     return ok;
   }
@@ -114,7 +111,7 @@ export class SSRContext extends EventEmitter {
     for (let i = 0; i < this.inputs.length; i++) {
       if (this.inputs[i].ended() === false) {
         newInputs.push(this.inputs[i]);
-        // this.inputs[i]?.prepare(t);
+        this.inputs[i]?.prepare(t);
       }
     }
     this.inputs = newInputs;
@@ -133,22 +130,19 @@ export class SSRContext extends EventEmitter {
   }
   connect(destination: Writable) {
     this.output = destination;
-    this.output.on("stop", () => {
-      this.stop(0);
-    });
   }
   start = () => {
     this.playing = true;
     if (this.output === null) return;
     let that = this;
-    this.output.write(Buffer.from(this.WAVHeader));
-
+    this.emit("data", Buffer.from(this.WAVHeader));
     let timer = setInterval(() => {
       that.pump();
       if (!that.playing || (that.end && that.currentTime >= that.end)) {
         that.stop(0);
         clearInterval(timer);
       }
+
       this.prepareUpcoming();
     }, this.secondsPerFrame);
   };
@@ -169,3 +163,8 @@ export class SSRContext extends EventEmitter {
     }
   }
 }
+// const ctx = SSRContext.fromFileName("-ac1-s16le");
+// playCSVmidi(ctx, resolve(__dirname, "../csv/midi.csv"));
+
+// ctx.connect(createWriteStream("mid2.wav"));
+// ctx.start();
