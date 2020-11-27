@@ -5,18 +5,46 @@ import { closeSync, openSync, readFileSync, readSync } from "fs";
 import { wscat } from "grep-wss";
 import { BufferSource, FileSource, Oscillator } from "./audio-data-source";
 import { SSRContext } from "./ssrctx";
-const ctx = SSRContext.fromFileName("./samples/billie-ac2-ar-44100-s16le.pcm");
-const file = new FileSource(ctx, {
-  filePath: "./samples/billie-ac2-ar-44100-s16le.pcm",
+describe("filesource", () => {
+  it("plays from a file", (done) => {
+    const ctx = SSRContext.fromFileName(
+      "./samples/billie-ac2-ar-44100-s16le.pcm"
+    );
+    const file = new FileSource(ctx, {
+      filePath: "./samples/billie-ac2-ar-44100-s16le.pcm",
+    });
+    file.connect(ctx);
+    const play = spawn(
+      "ffplay",
+      "-t 1.0 -i pipe:0 -ac 2 -ar 44100 -f s16le".split(" ")
+    ).stdin;
+    ctx.on("data", (d) => {
+      play.write(d);
+    });
+    ctx.start();
+    setTimeout(() => {
+      expect(1);
+      done();
+    });
+  });
 });
-file.connect(ctx);
-const play = spawn("ffplay", "-i pipe:0 -ac 2 -ar 44100 -f s16le".split(" "))
-  .stdin;
-ctx.on("data", (d) => {
-  play.write(d);
-}); //(play); //spawn('ffplay',`-i pipe:0 -ac 2 -ar 4410 -f s16le`.split(' '))))
-ctx.start();
 
+describe("oscilator", () => {
+  it("ssr must generate correct audio at 16bit signal", () => {
+    const ctx = new SSRContext({
+      bitDepth: 16,
+      sampleRate: 9000,
+      nChannels: 1,
+    });
+    const osc = new Oscillator(ctx, { frequency: 440 });
+    osc.start();
+    const buffer = osc.pullFrame();
+    expect(buffer.length).to.equal(ctx.blockSize);
+    expect(buffer.byteLength).to.equal(128 * 2);
+    ctx.start();
+    ctx.stop(0.5);
+  });
+});
 // const sampleDir = (filename) =>
 //   require("path").resolve(__dirname, "../testdata", filename);
 

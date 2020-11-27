@@ -126,7 +126,7 @@ export class SSRContext extends EventEmitter {
     for (let i = 0; i < this.inputs.length; i++) {
       if (this.inputs[i].ended() === false) {
         newInputs.push(this.inputs[i]);
-        this.inputs[i]?.prepare(t);
+        this.inputs[i].prepare && this.inputs[i].prepare(t);
       }
     }
     this.inputs = newInputs;

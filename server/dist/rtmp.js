@@ -26,7 +26,7 @@ exports.RTServer = (config) => {
         const onData = (ws, data) => {
             const request = data.toString().trim();
             if (fs_1.existsSync(`${midfiles}/${request}`)) {
-                midi_buffer_source_1.playCSVmidi(ctx, `${midfiles}/${request}`, "");
+                midi_buffer_source_1.playCsv(ctx, `${midfiles}/${request}`, "");
             }
             if (request.length == 1 && soundkeys_1.keyboardToFreq(request, 3) >= 0) {
                 const osc = new audio_data_source_1.Oscillator(ctx, {

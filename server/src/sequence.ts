@@ -12,7 +12,7 @@
 // 			loadBuffer:()=>{
 // 				const ob = Buffer.alloc()
 // 				cspawnToBuffer("ffmpeg",
-// 				`-i db/${note.instrument}/${note.note}.mp3 -`, )
+// 				`-i db/${note.instrument}/${note.midi}.mp3 -`, )
 // 			}
 // 		});
 // 	});

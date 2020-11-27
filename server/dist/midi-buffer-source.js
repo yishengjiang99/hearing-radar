@@ -40,7 +40,7 @@ exports.parseMidiCSV = (line) => {
     const [instrument, note, duration, start, end] = line.split(",");
     return {
         instrument,
-        note: parseInt(note),
+        midi: parseInt(note),
         duration: parseFloat(duration),
         start: parseFloat(start),
         end: parseFloat(end),
@@ -52,7 +52,8 @@ exports.loadBuffer = (ctx, note, noteCache) => __awaiter(void 0, void 0, void 0,
         const format = `${ctx.bitDepth === 16 ? "s16le" : "f32le"}`;
         const input = `db/Fatboy_${note.instrument}/${note.note}.mp3`;
         const cacheKey = `${note.instrument}${note.note}`;
-        if (noteCache.cacheKeys.includes(cacheKey) && noteCache.read(cacheKey) !== null) {
+        if (noteCache.cacheKeys.includes(cacheKey) &&
+            noteCache.read(cacheKey) !== null) {
             return noteCache.read(cacheKey);
         }
         const ob = noteCache.malloc(cacheKey);
@@ -108,11 +109,17 @@ const writeToCsv = (filename) => {
     tracks.map((t) => {
         t.notes.map((note) => {
             const obj = {
-                instrument: t.instrument.name.replace(" ", "_").replace(" ", "_").replace(" ", "_").replace("(", "").replace(")", ""),
+                instrument: t.instrument.name
+                    .replace(" ", "_")
+                    .replace(" ", "_")
+                    .replace(" ", "_")
+                    .replace("(", "")
+                    .replace(")", ""),
                 note: note.midi,
                 duration: header.ticksToSeconds(note.durationTicks),
                 start: header.ticksToSeconds(note.ticks),
-                end: header.ticksToSeconds(note.ticks) + header.ticksToSeconds(note.durationTicks),
+                end: header.ticksToSeconds(note.ticks) +
+                    header.ticksToSeconds(note.durationTicks),
             };
             fs_1.appendFileSync(wfs, "\n" + Object.values(obj).join(","));
             console.log(obj);
@@ -124,7 +131,10 @@ const ctx = ssrctx_1.SSRContext.fromFileName("-ac1-s16le");
 function playCsv(ctx, csv, outfile) {
     var e_2, _a;
     return __awaiter(this, void 0, void 0, function* () {
-        const uniqNotes = parseInt(require("child_process").execSync(`cat ${csv} |cut -f1,2 -d',' |sort|uniq|wc -l`).toString().trim());
+        const uniqNotes = parseInt(require("child_process")
+            .execSync(`cat ${csv} |cut -f1,2 -d',' |sort|uniq|wc -l`)
+            .toString()
+            .trim());
         const noteCache = new flat_cache_store_1.CacheStore(uniqNotes, ctx.bytesPerSecond * 2, path_1.resolve(`db/cache/${path_1.basename(csv)}`));
         let notes = fs_1.readFileSync(csv)
             .toString()
@@ -170,5 +180,5 @@ function playCsv(ctx, csv, outfile) {
     });
 }
 exports.playCsv = playCsv;
-playCsv(ctx, "./csv/sorted.csv", "midi.wav");
+writeToCsv("../Beethoven-Symphony5-1.mid");
 //# sourceMappingURL=midi-buffer-source.js.map

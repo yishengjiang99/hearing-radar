@@ -1,9 +1,6 @@
 import { SharedRingBuffer } from "./shared-ring-buffer";
 import { ReadWaveHeader } from "./xforms";
-export const fetchsource = async (
-	url: string,
-	srb: SharedRingBuffer
-): Promise<SharedRingBuffer> => {
+export const fetchsource = async (url: string, srb: SharedRingBuffer): Promise<SharedRingBuffer> => {
 	const highWaterMark = 1024 * 12;
 	const rs: ReadableStream = (await fetch(url)).body;
 	const reader = rs.getReader();

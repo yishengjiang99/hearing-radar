@@ -3,10 +3,11 @@ import { existsSync, promises, read, readdirSync } from "fs";
 import { wscat, WsServer } from "grep-wss";
 import { IncomingMessage } from "http";
 import { resolve } from "path";
-import { playCSVmidi } from "./midi-buffer-source";
+import { playCsv } from "./midi-buffer-source";
 import { Oscillator } from "./audio-data-source";
 import { keyboardToFreq } from "./soundkeys";
 import { SSRContext } from "./ssrctx";
+import { WsSocket } from "grep-wss/dist/WsSocket";
 const midfiles = resolve(__dirname, "../csv");
 
 const files = execSync(`ls ${midfiles}`).toString().split("\n");
@@ -27,7 +28,7 @@ export const RTServer = (config) => {
     const onData = (ws: WsSocket, data: Buffer) => {
       const request = data.toString().trim();
       if (existsSync(`${midfiles}/${request}`)) {
-        playCSVmidi(ctx, `${midfiles}/${request}`, "");
+        playCsv(ctx, `${midfiles}/${request}`, "");
       }
 
       if (request.length == 1 && keyboardToFreq(request, 3) >= 0) {

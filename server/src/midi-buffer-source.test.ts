@@ -2,33 +2,58 @@ import { expect } from "chai";
 import { createWriteStream } from "fs";
 import { BufferSource } from "./audio-data-source";
 import { execSync } from "child_process";
-import { loadBuffer, parseMidiCSV } from "./midi-buffer-source";
+import { loadBuffer, parseMidiCSV, playCSVmidi } from "./midi-buffer-source";
 import { SSRContext } from "./ssrctx";
 import { PassThrough } from "stream";
+import { resolve } from "path";
+import { CacheStore } from "./flat-cache-store";
 const tickToTime = (t) => t / 1000;
-describe("midi-buffersource", () => {
-  const ctx = new SSRContext({
-    nChannels: 1,
-    bitDepth: 16,
-    sampleRate: 9000,
+describe("plays midi", () => {
+  it("s", () => {
+    // const filename = "../Beethoven-Symphony5-1.mid";
+    // const ctx = SSRContext.fromFileName("-ac1-s16le");
+    // playCSVmidi(write)
   });
+});
+describe("midi-buffersource", () => {
+  let ctx, noteCache;
+  beforeEach(() => {
+    ctx = new SSRContext({
+      nChannels: 1,
+      bitDepth: 16,
+      sampleRate: 9000,
+    });
+    noteCache = new CacheStore(
+      33,
+      ctx.bytesPerSecond * 2,
+      resolve(`db/cache/test`)
+    );
+  });
+
   it("it loads buffer from file", async () => {
-    const cache = initCache(ctx);
-    const buffer = await loadBuffer(ctx, parseMidiCSV("clarinet,67,0.28301699999999996,,256,116"), cache);
-    const buffer2 = await loadBuffer(ctx, parseMidiCSV("clarinet,67,0.28301699999999996,,256,116"), cache);
-    expect(cache.length).to.equal(1);
+    const buffer = await loadBuffer(
+      ctx,
+      parseMidiCSV("clarinet,67,0.28301699999999996,,256,116"),
+      null
+    );
+    const buffer2 = await loadBuffer(
+      ctx,
+      parseMidiCSV("clarinet,67,0.28301699999999996,,256,116"),
+      noteCache
+    );
+    expect(noteCache.length).to.equal(1);
 
     ctx.stop(0);
   });
   it("makes BufferSource", async () => {
-    const cache = initCache(ctx);
+    const cache = noteCache;
 
     const note = parseMidiCSV("clarinet,67,,,0,116");
     await loadBuffer(ctx, note, cache);
     const brs = new BufferSource(ctx, {
       start: tickToTime(note.start),
       end: tickToTime(note.start + note.duration),
-      getBuffer: () => cache.read(`${note.instrument}${note.note}`),
+      getBuffer: () => cache.read(`${note.instrument}${note.midi}`),
     });
     let offset = 0;
     const buffer = brs.pullFrame();
@@ -42,12 +67,8 @@ describe("midi-buffersource", () => {
     let line = `clarinet,67,0.14150849999999998,,0,116`;
 
     const note = parseMidiCSV(line);
-    const ctx = new SSRContext({
-      nChannels: 1,
-      bitDepth: 16,
-      sampleRate: 9000,
-    });
-    const cache = initCache(ctx);
+
+    const cache = noteCache;
 
     loadBuffer(ctx, note, cache).then((buffer) => {
       new BufferSource(ctx, {

@@ -1,4 +1,10 @@
-import { appendFileSync, createWriteStream, readFileSync, writeFile, writeFileSync } from "fs";
+import {
+  appendFileSync,
+  createWriteStream,
+  readFileSync,
+  writeFile,
+  writeFileSync,
+} from "fs";
 import { ScheduledDataSource, BufferSource } from "./audio-data-source";
 import { cspawnToBuffer, spawnInputBuffer } from "./ffmpeg-link";
 import { SSRContext } from "./ssrctx";
@@ -15,21 +21,29 @@ export const parseMidiCSV = (line: string): MidiNote => {
   const [instrument, note, duration, start, end] = line.split(",");
   return {
     instrument,
-    note: parseInt(note),
+    midi: parseInt(note),
     duration: parseFloat(duration),
     start: parseFloat(start),
     end: parseFloat(end),
   };
 };
 
-export const loadBuffer = async (ctx: SSRContext, note: MidiNote, noteCache: CacheStore) => {
+export const loadBuffer = async (
+  ctx: SSRContext,
+  note: MidiNote,
+  noteCache?: CacheStore
+) => {
   try {
     const aoptions = `-ac ${ctx.nChannels} -ar ${ctx.sampleRate}`;
     const format = `${ctx.bitDepth === 16 ? "s16le" : "f32le"}`;
-    const input = `db/Fatboy_${note.instrument}/${note.note}.mp3`;
-    const cacheKey = `${note.instrument}${note.note}`;
+    const input = `db/Fatboy_${note.instrument}/${note.midi}.mp3`;
+    const cacheKey = `${note.instrument}${note.midi}`;
 
-    if (noteCache.cacheKeys.includes(cacheKey) && noteCache.read(cacheKey) !== null) {
+    if (
+      noteCache &&
+      noteCache.cacheKeys.includes(cacheKey) &&
+      noteCache.read(cacheKey) !== null
+    ) {
       return noteCache.read(cacheKey);
     }
     const ob = noteCache.malloc(cacheKey);
@@ -42,10 +56,18 @@ export const loadBuffer = async (ctx: SSRContext, note: MidiNote, noteCache: Cac
   }
 };
 
-export const playCSVmidi = async (ctx: SSRContext, notes: MidiNote[], cacheFileName: string) => {
+export const playCSVmidi = async (
+  ctx: SSRContext,
+  notes: MidiNote[],
+  cacheFileName: string
+) => {
   const uniqs = new Set<string>();
   const uniqNotes = notes.map((n) => uniqs.add(n.instrument + n.note));
-  const noteCache = new CacheStore(uniqNotes.length, ctx.bytesPerSecond * 2, cacheFileName);
+  const noteCache = new CacheStore(
+    uniqNotes.length,
+    ctx.bytesPerSecond * 2,
+    cacheFileName
+  );
 
   for await (const brs of (async function* () {
     while (notes.length) {
@@ -54,7 +76,7 @@ export const playCSVmidi = async (ctx: SSRContext, notes: MidiNote[], cacheFileN
       const brs = new BufferSource(ctx, {
         start: note.start - 40,
         end: note.end - 40,
-        getBuffer: () => noteCache.read(`${note.instrument}${note.note}`),
+        getBuffer: () => noteCache.read(`${note.instrument}${note.midi}`),
       });
       brs.connect(ctx);
       yield brs;
@@ -65,22 +87,29 @@ export const playCSVmidi = async (ctx: SSRContext, notes: MidiNote[], cacheFileN
   noteCache.persist();
 };
 
-const filename = "../Beethoven-Symphony5-1.mid";
-
 const writeToCsv = (filename) => {
   const wfs = resolve(__dirname, "../csv/", basename(filename) + ".csv");
 
-  const { header, tracks } = new Midi(readFileSync(resolve(__dirname, filename)).buffer);
+  const { header, tracks } = new Midi(
+    readFileSync(resolve(__dirname, filename)).buffer
+  );
   writeFileSync(wfs, header.name);
   appendFileSync(wfs, "\n#inst,midi,duration,statt,end");
   tracks.map((t) => {
     t.notes.map((note) => {
       const obj = {
-        instrument: t.instrument.name.replace(" ", "_").replace(" ", "_").replace(" ", "_").replace("(", "").replace(")", ""),
+        instrument: t.instrument.name
+          .replace(" ", "_")
+          .replace(" ", "_")
+          .replace(" ", "_")
+          .replace("(", "")
+          .replace(")", ""),
         note: note.midi,
         duration: header.ticksToSeconds(note.durationTicks),
         start: header.ticksToSeconds(note.ticks),
-        end: header.ticksToSeconds(note.ticks) + header.ticksToSeconds(note.durationTicks),
+        end:
+          header.ticksToSeconds(note.ticks) +
+          header.ticksToSeconds(note.durationTicks),
       };
       appendFileSync(wfs, "\n" + Object.values(obj).join(","));
       console.log(obj);
@@ -88,7 +117,6 @@ const writeToCsv = (filename) => {
   });
   return filename + ".csv";
 };
-const ctx = SSRContext.fromFileName("-ac1-s16le");
 
 //  playCSVmidi(ctx, notes, t.instrument.name);
 
@@ -98,8 +126,17 @@ const ctx = SSRContext.fromFileName("-ac1-s16le");
 // ctx.start();
 
 export async function playCsv(ctx: SSRContext, csv: string, outfile: string) {
-  const uniqNotes = parseInt(require("child_process").execSync(`cat ${csv} |cut -f1,2 -d',' |sort|uniq|wc -l`).toString().trim());
-  const noteCache = new CacheStore(uniqNotes, ctx.bytesPerSecond * 2, resolve(`db/cache/${basename(csv)}`));
+  const uniqNotes = parseInt(
+    require("child_process")
+      .execSync(`cat ${csv} |cut -f1,2 -d',' |sort|uniq|wc -l`)
+      .toString()
+      .trim()
+  );
+  const noteCache = new CacheStore(
+    uniqNotes,
+    ctx.bytesPerSecond * 2,
+    resolve(`db/cache/${basename(csv)}`)
+  );
   let notes = readFileSync(csv)
     .toString()
     .trim()
@@ -113,7 +150,7 @@ export async function playCsv(ctx: SSRContext, csv: string, outfile: string) {
       const brs = new BufferSource(ctx, {
         start: note.start,
         end: note.end,
-        getBuffer: () => noteCache.read(`${note.instrument}${note.note}`),
+        getBuffer: () => noteCache.read(`${note.instrument}${note.midi}`),
       });
       await loadBuffer(ctx, note, noteCache);
       yield brs;
@@ -133,4 +170,4 @@ export async function playCsv(ctx: SSRContext, csv: string, outfile: string) {
   return ctx;
 }
 //writeToCsv("../Beethoven-Symphony5-1.mid");
-playCsv(ctx, "./csv/sorted.csv", "midi.wav");
+//playCsv(ctx, "./csv/sorted.csv", "midi.wav");

@@ -23,31 +23,33 @@ export function loadMidi(filename, output: Writable) {
   );
 }
 
-// export async function* midiTrackGenerator(tracks: any[]) {
-//   let now = 0;
+export async function* midiTrackGenerator(tracks: any[]) {
+  let now = 0;
 
-//   while (tracks.length > 0) {
-//     let next = null;
-//     let loopdone;
-//     for (const index in tracks) {
-//       const track = tracks[index];
-//       if (track.length === 0) {
-//         loopdone = index;
-//         continue;
-//       }
-//       if (track[0] && track[0].ticks && track[0].ticks < now) {
-//         const { instrument, midi, name, ticks, durationTicks } = track.shift();
-//         yield [instrument.name, midi, name, ticks, durationTicks];
-//       } else {
+  while (tracks.length > 0) {
+    let next = null;
+    let loopdone;
+    for (const index in tracks) {
+      const track = tracks[index];
+      if (track.length === 0) {
+        loopdone = index;
+        continue;
+      }
+      if (track[0] && track[0].ticks && track[0].ticks < now) {
+        const { instrument, midi, name, ticks, durationTicks } = track.shift();
+        yield [instrument.name, midi, name, ticks, durationTicks];
+      } else {
+      }
+    }
+    if (loopdone) tracks.splice(loopdone, 1);
+    now += 10;
+  }
+}
+// const n = readdirSync("./db");
 
-//       }
-//     }
-//     if (loopdone) tracks.splice(loopdone, 1);
-//     now += 10;
-//   }
-// }
-const n = readdirSync("./db");
-
-n.filter((f) => f.endsWith(".mid")).map((midiFile) => {
-  loadMidi("./db/" + midiFile, createWriteStream("./db/csv/" + midiFile + ".csv"));
-});
+// n.filter((f) => f.endsWith(".mid")).map((midiFile) => {
+//   loadMidi(
+//     "./db/" + midiFile,
+//     createWriteStream("./db/csv/" + midiFile + ".csv")
+//   );
+// });
