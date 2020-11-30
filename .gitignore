@@ -1,3 +1,9 @@
 node_modules
 coverage
 build
+server/dist/az-concat.js
+dist/ssrtrack/src/rtcPeer.js
+dist/ssr-cxt/src/pcm.js
+*.scss
+*.mkv
+dist/server/src/rtmp.js
