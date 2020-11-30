@@ -5,15 +5,23 @@ import { SSRContext } from "./ssrctx";
 import { basename, resolve } from "path";
 import { Application, Request, Response, Router } from "express";
 import { ReadlineTransform, LSGraph, LSSource } from "grep-transform";
-import { createReadStream, existsSync, readFileSync } from "fs";
-import { download, listFiles } from "./pcm";
-import { combinemp3 } from "./ffmpeg-link";
+import { createReadStream, existsSync, readFileSync, writeFileSync } from "fs";
+
+import { convertMidi } from "./sequence";
+import { cspawnToBuffer } from "./ffmpeg-link";
 
 let files = [
   "synth/440/-ac2-f32le.wav",
   "synth/440/-ac2-s16le.wav",
   "samples/billie-ac2-ar-44100-s16le.pcm",
-];
+].concat(
+  JSON.parse(
+    execSync(
+      "curl https://grepudio.azurewebsites.net/api/list -o -|json_pp"
+    ).toString()
+  ).map((p) => p.url)
+);
+
 const express = require("express");
 const app: Application = express();
 const compiler = require("express-react-forked");
@@ -25,15 +33,21 @@ router.use("*", (req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   next();
 });
-router.use("/note/:midi/:instrument.mp3", (req, res) => {
+router.use("/note/:midi/:instrument.pcm", (req, res) => {
   res.writeHead(200, {
     "Access-Control-Allow-Origin": "*",
-    "Content-Type": "audio/mp3",
+    "Content-Type": "audio/pcm",
     "Content-Disposition": "inline",
   });
-  createReadStream(
-    `db/${req.params.instrument}/${parseInt(req.params.midi) - 21}.mp3`
-  ).pipe(res);
+  let ms;
+
+  const tt = req.query.t || 1;
+  const start = (parseInt(req.params.midi) - 21) * 433840 * 2;
+  const end = start + 44100 * 4 * 2 * parseFloat(tt as string);
+  const length = createReadStream(`db/${req.params.instrument}-32.pcm`, {
+    start,
+    end,
+  }).pipe(res);
 });
 router.use("/chord/:midi1/:midi2/:midi3/:instrument.mp3", (req, res) => {
   res.writeHead(200, {
@@ -50,24 +64,28 @@ router.use("/chord/:midi1/:midi2/:midi3/:instrument.mp3", (req, res) => {
   const cmd = `-y -hide_banner -loglevel panic ${inputStr} ${filterStr} -t ${duration} -f mp3 pipe:1`;
   spawn("ffmpeg", cmd.split(" ")).stdout.pipe(res);
 });
-router.use("/midi", (req, res) => {
-  spawn(
-    "curl",
-    "https://grepudio.azurewebsites.net/api/list?q=midi -o -".split(" ")
-  ).stdout.pipe(res);
+router.use("/midi/:name", async (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/csv",
+    "Content-Disposition": "inline",
+  });
+  res.flushHeaders();
+  // req.on("end", () => res.end());
+  await convertMidi("./song.mid", req, res);
+  res.end();
 });
-router.use("/midi/:name", (req, res) => {
-  spawn(
-    "curl",
-    `https://grepudio.azurewebsites.net/api/midi_dl?name=${req.params.name}`.split(
-      " "
-    )
-  ).stdout.pipe(res);
+router.use("/midi", (req, res) => {
+  res.json(
+    JSON.parse(
+      execSync(
+        "curl https://grepudio.azurewebsites.net/api/list -o -|json_pp"
+      ).toString()
+    ).map((p) => {
+      return { name: p.name, url: `midi/${basename(p.name)}` };
+    })
+  );
 });
 
-router.use("/mp3", (req, res) => {
-  res.redirect("https://grepudio.azurewebsites.net/api/list?q=mp3");
-});
 router.get("/r", (req, res: Response) => {
   res.status(200);
   res.contentType("text/html");
@@ -192,7 +210,7 @@ router.use("/", (req: Request, res: Response) => {
 			<div id='rx1'></div>
 			<div id='rx2'></div>
 		</div>
-    <script src='./build/templateUI.js' type='module'>
+    <script src='./build/playback.js' type='module'>
 
 		</script>
 		</body>
@@ -208,8 +226,5 @@ if (require.main === module) {
   // app.engine("jsx", compiler());
   app.use("/node", router);
   app.use("/", router);
-  app.listen(3000);
-  setInterval(() => {
-    console.log(process.memoryUsage());
-  }, 20200);
+  app.listen(2992);
 }

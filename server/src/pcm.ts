@@ -1,203 +1,219 @@
-import {
-  BlobServiceClient,
-  BlockBlobClient,
-  ContainerClient,
-} from "@azure/storage-blob";
-import { PassThrough, Readable, Transform, Writable } from "stream";
-import { BlobService, createBlobService, ErrorOrResult } from "azure-storage";
-import { ServerResponse } from "http";
-const service = createBlobService(process.env.AZ_CONN_STR);
-const containerName = "$web";
-export function listFiles(prefix = null, limit = 50) {
-  const readable = new PassThrough({
-    objectMode: true,
-  });
-  let nextPage = null;
-  service.listBlobsSegmentedWithPrefix(
-    containerName,
-    prefix,
-    nextPage,
-    (err, result) => {
-      if (err) return false;
-      if (result.continuationToken) nextPage = result.continuationToken;
-      result.entries.forEach((entry) => {
-        readable.push({
-          name: entry.name,
-          etag: entry.etag,
-          contentType: entry.contentLength,
-          contentLength: entry.contentSettings.contentType,
-          created_at: entry.creationTime,
-        });
-      });
-    }
-  );
-  return readable;
-}
-const ws = BlobServiceClient.fromConnectionString(
-  "DefaultEndpointsProtocol=https;AccountName=grepmusic;AccountKey=OOmiLHvrARhZKbsBA3EF1gZDyqScQbIwk5B7zukyJcbUrSW4pHd08uxME3+QZ6aSIZm2YdLzb8OOqTW1Gow09w==;EndpointSuffix=core.windows.net"
-);
-const midiContainer = ws.getContainerClient("$web");
-export const listContainers = () => ws.listContainers();
-export const listFiles2 = (prefix) => {
-  const gen = midiContainer.listBlobsFlat({ prefix });
-  return Readable.from(gen, {
-    objectMode: true,
-  }).pipe(
-    new Transform({
-      objectMode: true,
-      transform: (chunk, enc, cb) => {
-        const { name, properties } = chunk;
-        const { createdOn, contentType, contentLength } = properties;
-        const url = midiContainer.getBlobClient(name).url;
-        cb(null, [name, url, createdOn, contentLength, contentType].join(", "));
-      },
-    })
-  );
-};
-export const download = async (filename, res: ServerResponse) => {
-  const c = midiContainer.getBlobClient(filename);
-  return readBuffer(await c.downloadToBuffer());
-};
+import { EventEmitter } from "events";
+import { lstat, readFileSync } from "fs";
+import { createReadStream, readFile } from "fs";
+import { stdout } from "process";
+import { Readable, Transform, TransformCallback } from "stream";
+import { Writable } from "stream";
 
-function readBuffer(buffer: Buffer) {
+function readMidi(buffer: Buffer) {
   let offset = 0;
-  const dv = new DataView(buffer.buffer);
-  const fgetc = () => dv.getUint8(offset++);
-  const btoa = () => String.fromCharCode(dv.getUint8(offset++));
-  const btoi = () =>
-    (fgetc() << 24) | (fgetc() << 16) | (fgetc() << 8) | fgetc();
-  const read16 = () => (fgetc() << 8) | fgetc();
-  const read24 = () => (fgetc() << 16) | (fgetc() << 8) | fgetc();
-  const fgets = (n: number) => {
-    let s = "";
-    while (n-- > 0) {
-      s += String.fromCharCode(fgetc());
-    }
-    return s;
-  };
-  const readVarLength = () => {
-    let v = 0;
-    let n = fgetc();
-    v = n & 0x7f;
-    while (n & 0x80) {
-      n = fgetc();
-      v = (v << 7) | (n & 0x7f);
-    }
-    return v;
-  };
-  const output = [];
-  const chunkType = [btoa(), btoa(), btoa(), btoa()].join("");
-  const headerLength = btoi();
-  const format = read16();
-  const ntracks = read16();
-  const division = read16();
-  output.push([chunkType, headerLength, format, ntracks, division].join(","));
-  let lastHeader = "";
+  function bufferReader(buffer: Buffer) {
+    const bl = buffer.byteLength;
+    const dv = new DataView(buffer.buffer);
+    const fgetc = () => offset < bl && dv.getUint8(offset++);
+    const btoa = () => String.fromCharCode(fgetc());
+    const read32 = () =>
+      (fgetc() << 24) | (fgetc() << 16) | (fgetc() << 8) | fgetc();
+    const read16 = () => (fgetc() << 8) | fgetc();
+    const read24 = () => (fgetc() << 16) | (fgetc() << 8) | fgetc();
+    const fgets = (n: number) => (n > 1 ? btoa() + fgets(n - 1) : btoa());
+    const fgetnc = (n: number) =>
+      n > 1 ? fgetnc(n - 1).concat(fgetc()) : [fgetc()];
+    const readVarLength = () => {
+      let v = 0;
+      let n = fgetc();
+      v = n & 0x7f;
+      while (n & 0x80) {
+        n = fgetc();
+        v = (v << 7) | (n & 0x7f);
+      }
+      return v;
+    };
+    return {
+      fgetc,
+      dv,
+      btoa,
+      read32,
+      read16,
+      read24,
+      fgetnc,
+      readVarLength,
+      fgets,
+    };
+  }
+  const reader = bufferReader(buffer);
+  const {
+    fgetc,
+    btoa,
+    read32,
+    read16,
+    read24,
+    fgets,
+    fgetnc,
+    readVarLength,
+  } = reader;
+  console.log(offset);
+  fgetc();
+  console.log(offset);
+  readHeader();
+  function readHeader() {
+    const chunkType = [btoa(), btoa(), btoa(), btoa()].join("");
+    const headerLength = read32();
+    const format = read16();
+    const ntracks = read16();
+    const division = read16();
+    console.log({ chunkType, headerLength, format, ntracks, division });
+  }
 
-  while (offset < buffer.byteLength) {
+  const tracks = [];
+  const limit = buffer.byteLength;
+  while (offset < limit) {
     const mhrk = [btoa(), btoa(), btoa(), btoa()].join("");
-    let mhrkLength = btoi();
-    output.push(["#section", mhrk, mhrkLength].join(","));
-    const endOfChunk = offset + mhrkLength;
-    while (offset < endOfChunk) {
+    let mhrkLength = read32();
+    const endofTrack = offset + mhrkLength;
+
+    while (offset < endofTrack && offset < limit) {
+      console.log(offset, "vs", endofTrack, "vs", limit);
+      readMessage();
+    }
+    console.log("OEF inner while");
+
+    function readMessage() {
       const deltaTime = readVarLength();
       const msg = fgetc();
+      if (!msg) return false;
       let meta;
+      lstat;
       let info = [];
-      if (msg == 0xff) {
-        meta = fgetc();
-        var len = readVarLength();
-        let cmd = "";
-        switch (meta) {
-          case 0x01:
-          case 0x02:
-          case 0x03:
-          case 0x05:
-          case 0x06:
-          case 0x07:
-            info.push(fgets(len));
-            cmd = "etc";
-            break;
-          case 0x04:
-            info.push(fgets(len));
-            cmd = "instrument";
-            break;
-          case 0x51:
-            info.push(" tempo:" + read24());
-            cmd = "tempo";
-            break;
-          case 0x54:
-            const [framerateAndhour, min, sec, frame, subframe] = [
-              fgetc(),
-              fgetc(),
-              fgetc(),
-              fgetc(),
-              fgetc(),
-            ];
-            const framerate = [24, 25, 29, 30][framerateAndhour & 0x60];
-            const hour = framerate & 0x1f;
-            info = JSON.stringify({
-              framerate,
-              hour,
-              min,
-              sec,
-              frame,
-              subframe,
-            }).split(/,s+/);
-            break;
-          case 0x58:
-            cmd = "timesig";
-            info.push({
-              qnpm: fgetc(),
-              beat: fgetc(),
-            });
-            info.push({
-              ticks: fgetc(),
-              measure: fgetc(),
-            });
+      if (msg >= 0xf0) {
+        switch (msg) {
+          case 0xff:
+            meta = fgetc();
+            var len = readVarLength();
+            let cmd = "";
+            switch (meta) {
+              case 0x01:
+                cmd = "done";
+                break;
 
+              case 0x02:
+              case 0x03:
+              case 0x05:
+              case 0x06:
+              case 0x07:
+                info.push(fgets(len));
+                cmd = "etc";
+                break;
+              case 0x04:
+                info.push(fgets(len));
+                cmd = "instrument";
+                break;
+              case 0x51:
+                info.push({ tempo: read24() });
+                cmd = "tempo";
+                break;
+              case 0x54:
+                const [framerateAndhour, min, sec, frame, subframe] = [
+                  fgetc(),
+                  fgetc(),
+                  fgetc(),
+                  fgetc(),
+                  fgetc(),
+                ];
+                const framerate = [24, 25, 29, 30][framerateAndhour & 0x60];
+                const hour = framerate & 0x1f;
+                info = JSON.stringify({
+                  framerate,
+                  hour,
+                  min,
+                  sec,
+                  frame,
+                  subframe,
+                }).split(/,s+/);
+                break;
+              case 0x58:
+                cmd = "timesig";
+                info.push({
+                  qnpm: fgetc(),
+                  beat: fgetc(),
+                });
+                info.push({
+                  ticks: fgetc(),
+                  measure: fgetc(),
+                });
+
+                break;
+              case 0x59:
+                info.push({
+                  scale: fgetc() & 0x7f,
+                });
+                info.push({
+                  majminor: fgetc() & 0x7f,
+                });
+                cmd = "note pitch change";
+                break;
+              case 0x2f:
+                //END OF TRACK;
+                break;
+              default:
+                cmd = "unkown " + meta;
+                info.push({ "type:": meta, info: fgets(len) });
+                break;
+            }
+            console.log("meta ", deltaTime, msg, cmd, info);
             break;
-          case 0x59:
-            info.push({
-              scale: dv.getInt8(offset++),
-            });
-            info.push({
-              majminor: dv.getUint8(offset++),
-            });
-            cmd = "note pitch change";
+          case 0xf2:
+            return ["Song Position Pointer", read16()];
+          case 0xf1:
+            console.log("smpte:", [fgetc(), fgetc(), fgetc(), fgetc()]);
             break;
-          case 0x2f:
-            //END OF TRACK;
+          case 0xf3:
+          case 0xf4:
+            console.log("icd,", fgetc());
+            break;
+          case 0xf6:
+            console.log("list tunes");
+            break;
+          case 0xf7:
+          case 0xf8:
+            console.log("timing");
+            break;
+          case 0xfa:
+            console.log("start");
+            break;
+          case 0xfb:
+            console.log("Continue");
+            break;
+          case 0xfc:
+            console.log("stop");
             break;
           default:
-            cmd = "unkown " + meta;
-            info.push({ "type:": meta, info: fgets(len) });
+            console.log(msg);
+            console.log("wtf");
+            break;
         }
-        output.push(
-          [deltaTime, cmd || "cmd", info.map((t) => JSON.stringify(t))].join(
-            ","
-          )
-        );
-      } else if (msg > 0x80) {
-        if (!lastHeader) {
-          output.push("#deltaTime, channel, action, additional ");
-          lastHeader = "#deltaTime, channel, action, additional ";
-        }
-        const cmd = (0xf0 & msg) >> 4;
-
-        const keys = [
-          "keyoff",
-          "keyon",
-          "aftertouch",
-          "ccontrolchange",
-          "pgmchange",
-          "channel aftertouch max",
-          "pw",
-        ];
-        const action = keys[cmd - 8];
+      } else {
         const channel = msg & 0x0f;
-        const additional = [fgetc(), fgetc()];
-        output.push([deltaTime, channel, action, additional].join(","));
+        const cmd = msg >> 4;
+
+        const keys = {
+          keyoff: ["note", "velocity"],
+          keyon: ["note", "velocity"],
+          aftertouch: ["note", "pressure"],
+          ccontrolchange: ["control number", "value"],
+          pgmchange: ["program #"],
+          ChannelAftertouch: ["pressure"],
+          PitchBend: ["pb1", "pb2"],
+        };
+        const actions = Object.keys(keys);
+        const action = actions[cmd - 8];
+        if (!keys[action]) {
+          console.debug(cmd, msg);
+          // process.exit();
+        } else {
+          const infos = keys[action].map((info) => fgetc());
+          console.log([cmd, action, channel, ...infos].join(","));
+        }
       }
     }
   }

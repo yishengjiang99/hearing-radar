@@ -3,7 +3,7 @@ export type MidiNote = {
   midi?: number;
   measure?: number;
   start: number;
-  end: number;
+  end?: number;
   duration: number;
   buffer?: Buffer;
   note?: number;
