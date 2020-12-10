@@ -1,11 +1,5 @@
-import { EventEmitter } from "events";
-import { lstat, readFileSync } from "fs";
-import { createReadStream, readFile } from "fs";
-import { stdout } from "process";
-import { Readable, Transform, TransformCallback } from "stream";
-import { Writable } from "stream";
-
-function readMidi(buffer: Buffer) {
+import { readFileSync } from "fs";
+export function readMidi(buffer: Buffer) {
   let offset = 0;
   function bufferReader(buffer: Buffer) {
     const bl = buffer.byteLength;
@@ -73,17 +67,18 @@ function readMidi(buffer: Buffer) {
     const endofTrack = offset + mhrkLength;
 
     while (offset < endofTrack && offset < limit) {
-      console.log(offset, "vs", endofTrack, "vs", limit);
+      //", endofTrack, "vs", limit);
       readMessage();
     }
     console.log("OEF inner while");
 
     function readMessage() {
       const deltaTime = readVarLength();
+
       const msg = fgetc();
       if (!msg) return false;
       let meta;
-      lstat;
+
       let info = [];
       if (msg >= 0xf0) {
         switch (msg) {
@@ -212,9 +207,10 @@ function readMidi(buffer: Buffer) {
           // process.exit();
         } else {
           const infos = keys[action].map((info) => fgetc());
-          console.log([cmd, action, channel, ...infos].join(","));
+          console.log([deltaTime, cmd, action, channel, ...infos].join("\t"));
         }
       }
     }
   }
 }
+readMidi(readFileSync(process.argv[2]));

@@ -1,39 +1,50 @@
 export {};
 import { execSync, spawn, exec } from "child_process";
-import { Oscillator, FileSource } from "./audio-data-source";
+import { Oscillator, FileSource, BufferSource } from "./audio-data-source";
 import { SSRContext } from "./ssrctx";
-import { basename, resolve } from "path";
+import { basename, format, resolve } from "path";
 import { Application, Request, Response, Router } from "express";
 import { ReadlineTransform, LSGraph, LSSource } from "grep-transform";
-import { createReadStream, existsSync, readFileSync, writeFileSync } from "fs";
-
+import { createReadStream, readFile, readFileSync } from "fs";
 import { convertMidi } from "./sequence";
-import { cspawnToBuffer } from "./ffmpeg-link";
+import { listContainerFiles, listFilesSync } from "./azblob/list-blobs";
+import { Readable, Writable } from "stream";
+import { wsclient } from "./azblob";
+import { wavHeader, wavHeader32 } from "./wav-header";
 
 let files = [
   "synth/440/-ac2-f32le.wav",
   "synth/440/-ac2-s16le.wav",
   "samples/billie-ac2-ar-44100-s16le.pcm",
-].concat(
-  JSON.parse(
-    execSync(
-      "curl https://grepudio.azurewebsites.net/api/list -o -|json_pp"
-    ).toString()
-  ).map((p) => p.url)
-);
-
+];
 const express = require("express");
 const app: Application = express();
-const compiler = require("express-react-forked");
-app.set("views", require("path").resolve(__dirname, "../views"));
-app.set("view engine", "jsx");
-app.engine("jsx", compiler());
-export const router: Router = express.Router();
-router.use("*", (req, res, next) => {
+app.use("*", (req, res, next) => {
   res.set("Access-Control-Allow-Origin", "*");
   next();
 });
-router.use("/note/:midi/:instrument.pcm", (req, res) => {
+
+app.use("/play/:name", (req, res) => {
+  const size = 4096;
+  let offset = 0;
+  const ctx = SSRContext.fromFileName(req.params.filename);
+  ctx.connect(res);
+});
+app.use("/midi/:name", async (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/csv",
+    "Content-Disposition": "inline",
+  });
+  res.flushHeaders();
+  // req.on("end", () => res.end());
+  await convertMidi("./song.mid", res, {
+    interrupt: req,
+    realtime: true,
+  });
+  res.end();
+});
+
+app.use("/note/:midi/:instrument.pcm", (req, res) => {
   res.writeHead(200, {
     "Access-Control-Allow-Origin": "*",
     "Content-Type": "audio/pcm",
@@ -42,14 +53,18 @@ router.use("/note/:midi/:instrument.pcm", (req, res) => {
   let ms;
 
   const tt = req.query.t || 1;
-  const start = (parseInt(req.params.midi) - 21) * 433840 * 2;
+  const start = (parseInt(req.params.midi) - 21) * 433840;
   const end = start + 44100 * 4 * 2 * parseFloat(tt as string);
-  const length = createReadStream(`db/${req.params.instrument}-32.pcm`, {
-    start,
-    end,
-  }).pipe(res);
+  res.write(Buffer.from(wavHeader32(end - start)));
+  const length = createReadStream(
+    `./midisf/${req.params.instrument}/48000-mono-f32le-44-${req.params.midi}.pcm`,
+    {
+      start,
+      end,
+    }
+  ).pipe(res);
 });
-router.use("/chord/:midi1/:midi2/:midi3/:instrument.mp3", (req, res) => {
+app.use("/chord/:midi1/:midi2/:midi3/:instrument.mp3", (req, res) => {
   res.writeHead(200, {
     "Access-Control-Allow-Origin": "*",
     "Content-Type": "audio/mp3",
@@ -64,51 +79,9 @@ router.use("/chord/:midi1/:midi2/:midi3/:instrument.mp3", (req, res) => {
   const cmd = `-y -hide_banner -loglevel panic ${inputStr} ${filterStr} -t ${duration} -f mp3 pipe:1`;
   spawn("ffmpeg", cmd.split(" ")).stdout.pipe(res);
 });
-router.use("/midi/:name", async (req, res) => {
-  res.writeHead(200, {
-    "Content-Type": "text/csv",
-    "Content-Disposition": "inline",
-  });
-  res.flushHeaders();
-  // req.on("end", () => res.end());
-  await convertMidi("./song.mid", req, res);
-  res.end();
-});
-router.use("/midi", (req, res) => {
-  res.json(
-    JSON.parse(
-      execSync(
-        "curl https://grepudio.azurewebsites.net/api/list -o -|json_pp"
-      ).toString()
-    ).map((p) => {
-      return { name: p.name, url: `midi/${basename(p.name)}` };
-    })
-  );
-});
 
-router.get("/r", (req, res: Response) => {
-  res.status(200);
-  res.contentType("text/html");
-
-  LSSource(resolve(__dirname, "../db"))
-    .pipe(new ReadlineTransform())
-    .pipe(new LSGraph("."))
-    .on("data", (d) => {
-      res.write(d.toString());
-    })
-    .on("end", () => res.end());
-});
-router.get("/play", (req, res) => {
-  return res.render("index.html");
-});
-router.get("/samples/:filename", (req, res) => {
-  const ctx = SSRContext.fromFileName(
-    "./samples/billie-ac2-ar-44100-s16le.pcm"
-  );
-  const file = new FileSource(ctx, {
-    filePath: "./samples/billie-ac2-ar-44100-s16le.pcm",
-  });
-  file.connect(ctx);
+app.get("/samples/:filename", (req, res) => {
+  const ctx = SSRContext.fromFileName(req.params.filename);
   const play = spawn("ffplay", "-i pipe:0 -ac 2 -ar 44100 -f s16le".split(" "))
     .stdin;
   ctx.on("data", (d) => {
@@ -116,7 +89,7 @@ router.get("/samples/:filename", (req, res) => {
   }); //(play); //spawn('ffplay',`-i pipe:0 -ac 2 -ar 4410 -f s16le`.split(' '))))
   ctx.start();
 });
-router.get("/synth/:freq/:desc.wav", (req, res) => {
+app.get("/synth/:freq/:desc.wav", (req, res) => {
   res.writeHead(200, {
     "Access-Control-Allow-Origin": "*",
     "Content-Type": "x-audio/WAVE",
@@ -132,39 +105,8 @@ router.get("/synth/:freq/:desc.wav", (req, res) => {
   ctx.start();
   ctx.stop(2);
 });
-/*
 
-const ws = BlobServiceClient.fromConnectionString(
-  "DefaultEndpointsProtocol=https;AccountName=grepmusic;AccountKey=OOmiLHvrARhZKbsBA3EF1gZDyqScQbIwk5B7zukyJcbUrSW4pHd08uxME3+QZ6aSIZm2YdLzb8OOqTW1Gow09w==;EndpointSuffix=core.windows.net"
-);
-const cc = ws.listContainers();
-(async function () {
-  const cs = [];
-  for await (const c of cc) {
-    console.log(c);
-    cs.push(c);
-  }
-  const cll: ContainerClient = ws.getContainerClient(cs.shift().name);
-  const ob = Buffer.alloc(9000 * 16);
-  let offset = 0;
-
-  const s = (10089 / 3) * 0.2;
-  cll
-    .getBlobClient("db/db/Fatboy_pad_5_bowed/67.mp3")
-    .downloadToBuffer(ob, offset, s);
-  offset += s;
-
-  for await (const blob of cll.listBlobsByHierarchy(",")) {
-    console.log(blob);
-  }
-})();
-*/
-router.get("/db/:dir/:file", (req, res) => {
-  const path = resolve("db", req.params.dir, req.params.file); //, req.url.search["path"]);
-  res.end(path);
-});
-
-router.get("/synth/:freq/:desc", (req, res) => {
+app.get("/synth/:freq/:desc", (req, res) => {
   res.writeHead(200, {
     "Access-Control-Allow-Origin": "*",
     "Content-Type": "application/octet-stream",
@@ -180,51 +122,28 @@ router.get("/synth/:freq/:desc", (req, res) => {
   ctx.start();
   ctx.stop(2);
 });
-const fpath = (uri) => resolve(__dirname, `../../radar/public/${uri}`);
+const fpath = (uri) => resolve(__dirname, `../views`, uri);
 
-router.use("/build/:file", (req: Request, res: Response) => {
+app.use("/(:file).js", (req: Request, res: Response) => {
   console.log(req.params.file);
-  res.sendFile(fpath("build/" + req.params.file));
+  res.sendFile(fpath(req.params.file + ".js"));
 });
 // router.use("/", express.static(resolve(__dirname, "../views/")));
+const cachedINdex = readFileSync("views/index.html")
+  .toString()
+  .split("<!-- data -->");
 
-router.use("/", (req: Request, res: Response) => {
-  const fpath = resolve(__dirname, `../../public/${req.url}`);
-  res.end(`
-		<html>
-		<head>
-		</head>
-		<body>
-		<div id='container'>
-			<div id='menu'>
-				${files
-          .map((f) => `<li><button href='${f}'>${basename(f)}</button><li>`)
-          .join("")}
-			</div>
-
-			<div id='stdout'></div>
-			<input type='file' value='sele'>input</input>
-			<input size=80 autofocus ></input>
-		</div>
-		<div id='rx'>
-			<div id='rx1'></div>
-			<div id='rx2'></div>
-		</div>
-    <script src='./build/playback.js' type='module'>
-
-		</script>
-		</body>
-		</html>
-		`);
+const writeSync = async (ws: Writable, str: string) => {
+  new Promise((resolve) => ws.write(str, resolve));
+};
+const pipeSync = async (ws: Writable, rs: Readable) => {
+  new Promise((resolve) => {
+    rs.pipe(ws, { end: false });
+    rs.on("end", resolve);
+  });
+};
+app.use("/", async (req: Request, res: Response) => {
+  listContainerFiles("pcm").pipe(res);
 });
 
-if (require.main === module) {
-  const app: Application = express();
-  // const compiler = require("express-react-forked");
-  // app.set("views", require("path").resolve(__dirname, "../views"));
-  // app.set("view engine", "jsx");
-  // app.engine("jsx", compiler());
-  app.use("/node", router);
-  app.use("/", router);
-  app.listen(2992);
-}
+app.listen(3222, console.log);

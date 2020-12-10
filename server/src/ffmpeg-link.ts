@@ -78,3 +78,6 @@ export const spawnInputBuffer = (proc: ChildProcess, buffer?: Buffer) => {
   pt.pipe(proc.stdin);
   pt.write(buffer);
 };
+export const cspawn = function (string: TemplateStringsArray) {
+  return spawn(string.raw[0], string.raw.slice(1));
+};

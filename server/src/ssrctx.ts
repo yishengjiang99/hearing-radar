@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { createWriteStream } from "fs";
+import { createWriteStream, existsSync } from "fs";
 import { PassThrough, Writable } from "stream";
 import {
   AudioDataSource,
@@ -46,12 +46,16 @@ export class SSRContext extends EventEmitter {
         parseInt(filename.match(/\-ar(\d+)\-/)[1])) ||
       44100;
     const bitDepth = filename.includes("f32le") ? 32 : 16;
-    return new SSRContext({
+    const ctx = new SSRContext({
       sampleRate: sampleRate,
       nChannels: nChannels,
       fps: sampleRate / 128 / 50,
       bitDepth,
     });
+    debugger;
+    if (existsSync(filename))
+      ctx.inputSources.push(new FileSource(ctx, { filePath: filename }));
+    return ctx;
   };
 
   static defaultProps: CtxProps = {
@@ -126,7 +130,6 @@ export class SSRContext extends EventEmitter {
     for (let i = 0; i < this.inputs.length; i++) {
       if (this.inputs[i].ended() === false) {
         newInputs.push(this.inputs[i]);
-        this.inputs[i]?.prepare(t);
       }
     }
     this.inputs = newInputs;

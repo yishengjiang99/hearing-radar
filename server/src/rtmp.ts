@@ -8,38 +8,50 @@ import { Oscillator } from "./audio-data-source";
 import { keyboardToFreq } from "./soundkeys";
 import { SSRContext } from "./ssrctx";
 import { WsSocket } from "grep-wss/dist/WsSocket";
-const midfiles = resolve(__dirname, "../csv");
 
-const files = execSync(`ls ${midfiles}`).toString().split("\n");
-// const csvs = readdirSync(midfiles).map((file) => loadMidi(file, file + ".csv"));
 export const RTServer = (config) => {
+  const connections: WsSocket[] = [];
   return new Promise<WsServer>((resolve) => {
     const map = [];
     const ctx = SSRContext.fromFileName("-ac1-ar9000-s16le");
+    //  ctx.on("data", console.log);
+    ctx.on("data", (d) => {
+      console.log(d);
+      console.log([connections, ""].join("----------------"));
+      connections.forEach((c: WsSocket) => {
+        console.log("writing to ", c);
+        c.write(d);
+      });
+    });
     const server = new WsServer(config);
     server.on("connection", (ws: WsSocket, req: IncomingMessage) => {
+      connections.push(ws);
       ctx.on("data", (d) => ws.write(d));
-      ws.socket.on("data", (data) => onData(ws, data));
-      ws.write(execSync(`ls ${midfiles}`).toString());
+      ws.on("data", (data) => onData(ws, data));
     });
+
     server.on("listening", () => resolve(server));
     server.start();
+    ctx.start();
 
     const onData = (ws: WsSocket, data: Buffer) => {
       const request = data.toString().trim();
-      if (existsSync(`${midfiles}/${request}`)) {
-        playCsv(ctx, `${midfiles}/${request}`, "");
-      }
-
+      console.log(data.toString());
       if (request.length == 1 && keyboardToFreq(request, 3) >= 0) {
         const osc = new Oscillator(ctx, {
           frequency: keyboardToFreq(request, 3),
         });
         osc.connect(ctx);
         osc.start();
+      } else {
+        console.log(request.toString());
       }
     };
   });
 };
 
-RTServer({ port: 5150 });
+RTServer({ port: 5150 })
+  .then((server) => {
+    console.log(server);
+  })
+  .catch(console.error);

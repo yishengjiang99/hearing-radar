@@ -1,105 +1,139 @@
 import { Midi, Track, Header } from "@tonejs/midi";
-import { Note } from "@tonejs/midi/dist/Note";
-import { exec, spawn } from "child_process";
-import { CombinedNotes, MidiNote } from "src";
+import { Note, NoteInterface } from "@tonejs/midi/dist/Note";
+import { resolve } from "path";
 import { Readable, Transform, Writable } from "stream";
-import { combineNotes } from "./combine-notes";
-import { combinemp3 } from "./ffmpeg-link";
-function sigfig(num, sigdig) {
-  const mask = 10 << sigdig;
+export const sleep = (ms: number) => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+};
 
-  return Math.floor(num * mask) / mask;
-}
-const sleep = async (ms) =>
-  await new Promise((resolve) => setTimeout(resolve, ms));
-
+type state = {
+  paused: boolean;
+  ticks: number;
+  time: number;
+};
 export async function convertMidi(
-  filename: string,
-  interrupt: Readable,
-  outout: Writable
+  source,
+  output,
+  props: {
+    interrupt: Readable;
+    realtime: boolean;
+  }
 ) {
-  let ticks = 0;
-  const { tracks, header } = new Midi(require("fs").readFileSync(filename));
-  let paused = false,
-    stop = false;
-  let interruptMsg = [];
-  interrupt.on("data", (d) => {
-    const msg = d.toString().trim().split(" ");
-    switch (msg[0]) {
-      case "p":
-        paused = true;
-        outout.write("\npaused");
-        break;
-      case "r":
-        paused = false;
-        outout.write("\n resume");
-        stop = false;
-        break;
-      case "stop":
-        stop = true;
-        outout.write("\nstopped");
-        break;
-    }
+  const { interrupt, realtime } = props;
+  interrupt.on("data", handleMessage);
+  const readline = require("readline");
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true,
+    prompt: "loading....",
   });
 
-  const counterIterator = (async function* midiTrackGenerator(tracks, header) {
-    const ppq = header.ppq;
-    const tempos = header.tempos;
-    let bpm = tempos[0].bpm;
-    let resolution = 4;
-    let intervals = 60000 / bpm / resolution;
-    let msPerTick = 60000 / bpm / ppq;
-    while (true) {
-      const measure = header.ticksToMeasures(ticks);
+  const { tracks, header } = new Midi(require("fs").readFileSync(source));
+  const state = {
+    paused: false,
+    time: 0,
+  };
+  rl.prompt("lets go");
 
-      let group: CombinedNotes = {
-        start: header.ticksToSeconds(ticks),
-        measure: measure,
-        midis: [],
-      };
-      for (const track of tracks) {
-        if (track.notes.length === 0) continue;
-        while (track.notes[0].ticks <= ticks) {
-          const n: Note = track.notes.shift();
-          group.midis.push({
-            duration: n.duration,
-            start: n.ticks,
-            midi: n.midi,
-            instrument: track.instrument.name
-              .replace(" ", "_")
-              .replace(" ", "_"),
-            measure: measure,
+  async function pullMidiTrack(tracks, cb) {
+    let now = 0;
+    let done = 0;
+    while (tracks.length > done) {
+      const group = [];
+      tracks.forEach((track, i) => {
+        if (!track.notes || track.notes.length === 0) {
+          done++;
+          return;
+        }
+
+        if (track.notes[0].ticks < now) {
+          group.push({
+            ...track.notes.shift(),
+            ...track.instrument.name,
+          });
+        }
+      });
+      const { abort, increment } = await cb(now, group);
+      if (abort) break;
+      now += increment;
+      rl.output.write("\n" + now);
+    }
+  }
+
+  async function callback(
+    notes,
+    now
+  ): Promise<{ increment: number; abort: boolean }> {
+    function currentTempo(now) {
+      if (header.tempos[1] && now >= header.tempos[1].ticks) {
+        header.tempos.shift();
+      }
+      if (header.timeSignatures[1] && now >= header.timeSignatures[1].ticks) {
+        header.timeSignatures.shift();
+      }
+      let ppb = header.ppq;
+      let bpm = header.tempos[0]?.bpm || 120;
+      let signature = header.timeSignatures[0].timeSignature;
+      let beatLengthMs = 60000 / header.tempos[0].bpm;
+      let ticksPerbeat = (header.ppq / signature[1]) * 4;
+      return { ppb, bpm, ticksPerbeat, signature, beatLengthMs };
+    }
+    const { beatLengthMs, ticksPerbeat } = currentTempo(now);
+    sequencer.addNew(notes, ticksPerbeat);
+    sequencer.showCurrentRow();
+    await sleep(beatLengthMs);
+    return { increment: ticksPerbeat, abort: state.paused };
+  }
+  const sequenceArray = new Array(24).fill([]);
+  const sequencer = {
+    sequenceArray,
+    showCurrentRow: () => {
+      let row = sequenceArray.shift();
+      for (const note of row) {
+        rl.write(note);
+      }
+
+      row = null;
+
+      sequenceArray.push([]);
+    },
+    addNew: (notes, ticksPerbeat) => {
+      while (notes.length) {
+        const note = notes.shift();
+        for (let i = 0; i < Math.ceil(note.durationTicks / ticksPerbeat); i++) {
+          sequenceArray[i].push({
+            ...note,
+            envelopeIdx: i,
           });
         }
       }
-      yield group;
-
-      ticks += ppq / 4;
-      if (tempos[0].ticks < ticks) {
-        tempos.shift();
-        bpm = tempos[0].bpm;
-        resolution = 4;
-        intervals = 60000 / bpm / resolution;
-        //yield ["tempo change", bpm, resolution, intervals];
-      }
-      await sleep(intervals * 0.97);
-    }
-  })(tracks, header);
-
-  while (!stop) {
-    if (paused) {
-      await sleep(10);
-      continue;
-    }
-    const { value, done } = await counterIterator.next();
-    if (done || !value) break;
-    process.stderr.write(value.measure + "\n");
-    if (value.midis && value.midis.length) {
-      //   value.midis.map((m) => Object.values(m).join(",")).join("\n");
-
-      outout.write(JSON.stringify(value));
-    } else {
-      // outout.write(value.midis);
+    },
+  };
+  function handleMessage(d) {
+    const msg = d.toString().trim().split(" ");
+    switch (msg[0]) {
+      case "p":
+        state.paused = true;
+        output.write("\npaused");
+        break;
+      case "r":
+        state.paused = false;
+        output.write("\n resume");
+        break;
+      case "ff":
+        state.paused = true;
+        output.write("\nstopped");
+        break;
     }
   }
+
+  pullMidiTrack(tracks, callback);
 }
+
+convertMidi("./song.mid", process.stderr, {
+  interrupt: process.stdin,
+  realtime: true,
+});
