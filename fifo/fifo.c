@@ -4,7 +4,7 @@
 
 // void	*memcpy(void *__dst, const void *__src, size_t __n);
 
-typedef struct Fifo
+typedef struct
 {
     uint8_t *buffer;
     uint8_t *rptr;
@@ -74,21 +74,36 @@ int fifo_size(Fifo *f)
     }
 }
 
-int test()
-{
-    //printf("hello %lu", sizeof(Fifo));
+// int main()
+// {
+//     //printf("hello %lu", sizeof(Fifo));
 
-    Fifo *f = malloc(sizeof(Fifo));
-    fifo_init(f, 1000);
-    uint8_t buffer[] = {5, 7, 3, 4, 9, 1, 3};
-    fifo_write(f, buffer, 7);
-    uint8_t *ob = malloc(7 * 4);
-    fifo_read(f, ob, 7);
-    for (int i = 0; i < 7; i++)
-    {
-        //printf("%4x", ob[i]);
-    }
-    return 0;
-}
+//     Fifo *f = malloc(sizeof(Fifo));
+//     fifo_init(f, 1000);
+//     uint8_t buffer[] = {5, 7, 3, 4, 9, 1, 3};
+//     fifo_write(f, buffer, 7);
+//     uint8_t *ob = malloc(7 * 4);
+//     fifo_read(f, ob, 7);
+//     for (int i = 0; i < 7; i++)
+//     {
+//         printf("%4x", ob[i]);
+//     }
 
-//main();
+//     fifo_write(f, buffer, 7);
+//     fifo_write(f, buffer, 7);
+//     fifo_write(f, buffer, 7);
+//     fifo_write(f, buffer, 7);
+//     fifo_write(f, buffer, 7);
+//     fifo_write(f, buffer, 7);
+//     fifo_write(f, buffer, 7);
+//     uint8_t *ob3 = malloc(48 * 4);
+//     fifo_read(f, ob3, 48);
+//     for (int i = 0; i < 48; i++)
+//     {
+//         printf("%4x", ob3[i]);
+//     }
+
+//     return 0;
+// }
+
+// //main();
