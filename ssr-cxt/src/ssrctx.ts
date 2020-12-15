@@ -1,20 +1,10 @@
 import { EventEmitter } from "events";
 import { createWriteStream } from "fs";
 import { PassThrough, Writable } from "stream";
-import {
-  AudioDataSource,
-  FileSource,
-  Oscillator,
-  ScheduledDataSource,
-} from "./audio-data-source";
-import { wavHeader, readHeader } from "./wav-header";
+import { AudioDataSource } from "./audio-sources/audio-data-source";
+import { Decoder, Encoder } from "./Encoder";
+import { readHeader, wavHeader } from "./wav-header";
 
-import { Decoder, Encoder } from "./kodak";
-type Time = [number, number];
-export const timediff = (t1: Time, t2: Time) => {
-  return t1[0] + t1[1] / 1e9 - (t2[0] + t2[1] / 1e9);
-};
-//#region
 export interface CtxProps {
   nChannels?: number;
   sampleRate?: number;
@@ -29,10 +19,9 @@ export class SSRContext extends EventEmitter {
   playing: boolean;
   sampleRate: number;
   fps: number;
-  lastFrame: Time;
+  lastFrame: number;
   output: Writable;
   frameNumber: number;
-  inputs: AudioDataSource[] = [];
   bitDepth: number;
   static fromWAVFile = (path: string): SSRContext => {
     return readHeader(path);
@@ -53,7 +42,9 @@ export class SSRContext extends EventEmitter {
       bitDepth,
     });
   };
-
+  static default(): SSRContext {
+    return new SSRContext(SSRContext.defaultProps);
+  }
   static defaultProps: CtxProps = {
     nChannels: 2,
     sampleRate: 44100,
@@ -61,6 +52,7 @@ export class SSRContext extends EventEmitter {
   };
   end: number;
   decoder: Decoder;
+  inputs: AudioDataSource[] = [];
 
   constructor(props: CtxProps = SSRContext.defaultProps) {
     super();
@@ -81,11 +73,9 @@ export class SSRContext extends EventEmitter {
     return 1 / this.fps;
   }
   get samplesPerFrame() {
-    return (this.sampleRate * this.nChannels) / this.fps;
+    return 128;
   }
-  get inputSources() {
-    return this.inputs.filter((i) => i.active);
-  }
+
   get WAVHeader() {
     return wavHeader(
       30 * this.sampleRate,
@@ -101,7 +91,7 @@ export class SSRContext extends EventEmitter {
   get sampleArray() {
     switch (this.bitDepth) {
       case 32:
-        return Uint32Array;
+        return Float32Array;
       case 16:
         return Int16Array;
       case 8:
@@ -111,24 +101,19 @@ export class SSRContext extends EventEmitter {
     }
   }
   pump(): boolean {
-    this.lastFrame = process.hrtime();
     let ok = true;
     this.frameNumber++;
-    for (let i = 0; i < this.inputSources.length; i++) {
-      const b = this.inputSources[i].pullFrame();
+    for (let i = 0; i < this.inputs.length; i++) {
+      const b = this.inputs[i].read();
       b && this.emit("data", b);
+      if (this.output) this.output.write(b);
     }
     return ok;
   }
   prepareUpcoming() {
     let newInputs = [];
     const t = this.currentTime;
-    for (let i = 0; i < this.inputs.length; i++) {
-      if (this.inputs[i].ended() === false) {
-        newInputs.push(this.inputs[i]);
-        this.inputs[i].prepare && this.inputs[i].prepare(t);
-      }
-    }
+    for (let i = 0; i < this.inputs.length; i++) {}
     this.inputs = newInputs;
     if (this.inputs.length === 0) {
       this.stop(0);
@@ -169,7 +154,6 @@ export class SSRContext extends EventEmitter {
     if (second === 0) {
       this.playing = false;
       this.emit("finish");
-      this.inputs.forEach((input) => input.stop());
     } else {
       this.end = second;
     }
