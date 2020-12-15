@@ -1,19 +1,20 @@
-import { Note } from "@tonejs/midi/dist/Note";
+import { Header } from "@tonejs/midi";
 import { CombinedNotes, MidiNote } from ".";
 
-export const combineNotes = (header: Header, notes: Note[]): CombinedNotes[] =>
-  notes.reduce((array: CombinedNotes[], note: Note) => {
+export const combineNotes = (
+  header: Header,
+  notes: MidiNote[]
+): CombinedNotes[] =>
+  notes.reduce((array: CombinedNotes[], note: MidiNote) => {
     const lastNote = array.length > 0 && array[array.length - 1];
-    if (lastNote && lastNote.ticks === note.measure) {
+    if (lastNote && lastNote.start === note.measure) {
       lastNote.midis.push(note);
       if (note.start < lastNote.start) lastNote.start = note.start;
-      if (note.end > lastNote.end) lastNote.end = note.end;
     } else {
       array.push({
         start: note.start,
         midis: [note],
         measure: note.measure,
-        end: note.end,
       });
     }
     return array;

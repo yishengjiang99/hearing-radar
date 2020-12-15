@@ -1,6 +1,5 @@
 "use strict";
 
-import { RSA_NO_PADDING } from "constants";
 import { createReadStream } from "fs";
 import { Transform } from "stream";
 
@@ -38,14 +37,6 @@ export const createPageBlob = async (filename, container) => {
           leftover,
           chunk.slice(0, n - leftover.byteLength),
         ]);
-        /*
-        PageBlob.prototype.uploadPages = function (body, contentLength, options, callback) {
-	return this.client.sendOperationRequest({
-		body: body,
-		contentLength: contentLength,
-		options: options
-	}, uploadPagesOperationSpec, callback);
-};*/
         blob
           .uploadPages(agg, n, pageOffset)
           .then((resp) => {
@@ -78,7 +69,6 @@ export const createPageBlob = async (filename, container) => {
 if (process.argv[2]) {
   const filename = process.argv[2].trim();
   if (filename.endsWith(".mid")) {
-    console.log("s");
     createPageBlob(filename, "midi")
       .then((ws) => {
         createReadStream(filename).pipe(ws).pipe(process.stdout);

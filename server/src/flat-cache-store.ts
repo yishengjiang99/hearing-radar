@@ -12,7 +12,6 @@ export class CacheStore {
     this.cacheKeys = Array(size).fill("");
     this.n = 0;
     this.rfd = file;
-
     this.objectbyteLength = objectbyteLength;
     if (file && existsSync(file + ".cache.keys")) {
       this.cacheKeys = readFileSync(file + ".cache.keys")
@@ -25,17 +24,33 @@ export class CacheStore {
     this.cacheKeys[this.n] = key;
     this.cache.set(value, this.n * this.objectbyteLength);
     this.n++;
+    this.reallocIfNeeded();
   }
   malloc(key: string) {
     this.cacheKeys[this.n] = key;
-    const ret = this.cache.slice(this.n * this.objectbyteLength, this.n * this.objectbyteLength + this.objectbyteLength);
+    const ret = this.cache.slice(
+      this.n * this.objectbyteLength,
+      this.n * this.objectbyteLength + this.objectbyteLength
+    );
     this.n++;
+    this.reallocIfNeeded();
     return ret;
+  }
+  reallocIfNeeded() {
+    if (this.n > 0.89 * this.cacheKeys.length) {
+      this.n = 0; //reset/
+      // const newbuf = Buffer.alloc(this.cache.byteLength * 2);
+      // newbuf.set(this.cache, 0);
+      // this.cache = newbuf;
+    }
   }
   read(key: string) {
     for (let i = 0; i < this.n; i++) {
       if (this.cacheKeys[i] === key) {
-        return this.cache.slice(i * this.objectbyteLength, i * this.objectbyteLength + this.objectbyteLength);
+        return this.cache.slice(
+          i * this.objectbyteLength,
+          i * this.objectbyteLength + this.objectbyteLength
+        );
       }
     }
     return null;

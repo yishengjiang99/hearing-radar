@@ -8,7 +8,6 @@ export async function convertMidi(
   source,
   output,
   props: {
-    mode: "manual" | "realtime" | "asap";
     interrupt: Readable;
     realtime: boolean;
   }
@@ -56,6 +55,7 @@ export async function convertMidi(
       const { abort, increment } = await cb(now, group);
       if (abort) break;
       now += increment;
+      //   rl.output.write("\n" + now);
     }
   }
 
@@ -82,7 +82,7 @@ export async function convertMidi(
     const { beatLengthMs, ticksPerbeat } = currentTempo(now);
     sequencer.addNew(notes, ticksPerbeat);
     sequencer.showCurrentRow();
-    sequencer.playCurrentRow();
+
     if (state.mode === "manual") {
       await new Promise<void>((resolve) => {
         interrupt.on("data", (d) => {
@@ -91,20 +91,20 @@ export async function convertMidi(
           }
         });
       });
-    } else if (realtime) {
+    } else {
       const timeSpentInOffCycle = process.uptime() - cycleStart;
 
       await sleep(beatLengthMs / 4 - timeSpentInOffCycle);
-    } else {
-      await new Promise((resolve) => {
-        process.nextTick(resolve);
-      });
     }
     return { increment: ticksPerbeat / 4, abort: false };
   }
-
+  const outputfd = new PaopenSync("temp/" + 3 + ".pcm", "a+");
+   
   const sequenceArray = new Array(224).fill(new Array(80).fill(" "));
   const beatsPerRow = 1 / 4;
+  const ticksPerRow = header.ppq / 4;
+
+  let lastEntry;
   let buffers = [];
   let activeTracks = {};
   let dynamicCompression = {
@@ -113,7 +113,6 @@ export async function convertMidi(
     attack: 0.5,
     knee: 0.9,
   };
-
   const sequencer = {
     sequenceArray,
 
@@ -127,7 +126,7 @@ export async function convertMidi(
       let secondsPerRow = 60000 / header.tempos[0].bpm / beatsPerRow;
       let bytes = secondsPerRow * ctx.bytesPerSecond;
       const activeSources = Object.keys(activeTracks).length;
-      const summingRow = new Float64Array(bytes * 2);
+      const summingRow = new Float64Array(bytes);
 
       const rowbuffers: Buffer[] = [];
       for (const trackId of Object.keys(activeTracks)) {
@@ -141,8 +140,8 @@ export async function convertMidi(
           summingRow[i] += buffer.readFloatLE(i);
         }
       }
-      const outputbuffer = new Float32Array(summingRow.length);
-      for (let i = 0; i < summingRow.length; i++) {
+      const outputbuffer = new Float32Array();
+      for (let i in summingRow) {
         let v = summingRow[i];
         let { threshold, knee, attack, ratio } = dynamicCompression;
         if (v > threshold + knee) {
@@ -152,7 +151,7 @@ export async function convertMidi(
         }
         outputbuffer[i] = v[i];
       }
-      output.write(Buffer.from(outputbuffer));
+      writeSync(outputfd, outputbuffer);
     },
     addNew: (notes, ticksPerbeat) => {
       while (notes.length) {
@@ -169,6 +168,9 @@ export async function convertMidi(
           i++;
         }
       }
+      lastEntry = notes;
+
+      console.log(sequenceArray);
     },
   };
   function handleMessage(d) {
@@ -185,7 +187,6 @@ export async function convertMidi(
       case "ff":
         state.paused = true;
         output.write("\nstopped");
-
         break;
       case "s":
         break;

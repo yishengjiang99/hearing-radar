@@ -188,3 +188,16 @@ export class SSRContext extends EventEmitter {
 
 // ctx.connect(createWriteStream("mid2.wav"));
 // ctx.start();
+export const format = (str) =>
+  str
+    .replace(" ", "_")
+    .replace(" ", "_")
+    .replace(" ", "_")
+    .replace(" ", "_")
+    .replace(")", "")
+    .replace("(", "");
+export const sleep = (ms: number) => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+};
